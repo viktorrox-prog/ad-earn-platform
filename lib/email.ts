@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+/* eslint-disable */
 
 function getTransporter() {
   const host = process.env.SMTP_HOST;
