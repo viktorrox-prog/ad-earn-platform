@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
-import { Geist } from "next/font/google";
+import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { TrendingUp } from "lucide-react";
 import { BridgeProvider } from "@/components/bridge-provider";
@@ -13,7 +13,7 @@ import { CosmicBackgroundWrapper } from "@/components/cosmic-background-wrapper"
 
 const appName = "AdEarn";
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: appName,
@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={cn("font-sans dark", geist.variable)}>
+    <html lang="ru" className={cn("font-sans dark", inter.variable)}>
       <body className="antialiased min-h-screen bg-background flex flex-col">
         <BridgeProvider />
         <CosmicBackgroundWrapper />
@@ -54,3 +54,4 @@ export default function RootLayout({
     </html>
   );
 }
+
