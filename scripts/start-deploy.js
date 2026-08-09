@@ -20,3 +20,4 @@ const child = spawn("npx", ["next", "start", "-H", "0.0.0.0", "-p", port], {
   shell: true,
 });
 child.on("exit", (code) => process.exit(code || 0));
+
