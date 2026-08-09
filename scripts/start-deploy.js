@@ -1,3 +1,4 @@
+
 const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -15,9 +16,8 @@ if (build.status !== 0) {
 
 console.log("=== start ===");
 const port = process.env.PORT || "3000";
-const child = spawn("npx", ["next", "start", "-H", "0.0.0.0", "-p", port], {
+const nextBin = path.join(__dirname, "..", "node_modules", ".bin", "next");
+const child = spawn(nextBin, ["start", "-H", "0.0.0.0", "-p", port], {
   stdio: "inherit",
-  shell: true,
 });
 child.on("exit", (code) => process.exit(code || 0));
-
