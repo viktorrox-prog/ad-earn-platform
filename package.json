@@ -52,3 +52,13 @@
     "@typescript-eslint/parser": "^8.46.0"
   }
 }
+"scripts": {
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start -p 3000 -H 0.0.0.0",
+  "start:prod": "next start -p 3000 -H 0.0.0.0",
+  "start:deploy": "node scripts/start-deploy.js",
+  "check": "npm run lint && npm run typecheck",
+  ...
+}
+
