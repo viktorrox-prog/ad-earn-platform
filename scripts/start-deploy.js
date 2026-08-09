@@ -1,4 +1,10 @@
 const { spawn, spawnSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+
+console.log("=== clean .next ===");
+const nextDir = path.join(__dirname, "..", ".next");
+fs.rmSync(nextDir, { recursive: true, force: true });
 
 console.log("=== build ===");
 const build = spawnSync("npm", ["run", "build"], { stdio: "inherit", shell: true });
