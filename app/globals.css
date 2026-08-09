@@ -288,4 +288,25 @@
   .animate-nebula-pulse {
     animation: nebula-pulse 8s ease-in-out infinite;
   }
+}.dark {
+  --background: oklch(0.15 0.02 270) !important;
+  --foreground: oklch(0.95 0.01 270) !important;
+  --card: oklch(0.2 0.03 270) !important;
+  --card-foreground: oklch(0.95 0.01 270) !important;
+  --popover: oklch(0.2 0.03 270) !important;
+  --popover-foreground: oklch(0.95 0.01 270) !important;
+  --primary: oklch(0.6 0.18 264) !important;
+  --primary-foreground: oklch(0.15 0.02 270) !important;
+  --secondary: oklch(0.25 0.05 270) !important;
+  --secondary-foreground: oklch(0.9 0.02 270) !important;
+  --muted: oklch(0.25 0.05 270) !important;
+  --muted-foreground: oklch(0.65 0.05 270) !important;
+  --accent: oklch(0.25 0.05 270) !important;
+  --accent-foreground: oklch(0.9 0.02 270) !important;
+  --destructive: oklch(0.6 0.22 25) !important;
+  --border: oklch(1 0 0 / 10%) !important;
+  --input: oklch(1 0 0 / 15%) !important;
+  --ring: oklch(0.6 0.18 264) !important;
 }
+
+
