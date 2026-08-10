@@ -76,17 +76,13 @@
     --sidebar-accent-foreground: oklch(0.9 0.02 270);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.6 0.18 264);
-    body {
-  background-color: oklch(0.15 0.02 270);
-  color: oklch(0.95 0.01 270);
-}
-
   }
   * {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: oklch(0.15 0.02 270);
+    color: oklch(0.95 0.01 270);
   }
 }
 
@@ -260,3 +256,4 @@
     animation: nebula-pulse 8s ease-in-out infinite;
   }
 }
+
