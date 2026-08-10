@@ -1,6 +1,6 @@
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: "/home/app/.next",
   reactStrictMode: true,
   poweredByHeader: false,
   typescript: {
@@ -12,3 +12,5 @@ const nextConfig = {
 };
 
 export default nextConfig;
+
+
