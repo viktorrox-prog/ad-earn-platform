@@ -5,9 +5,9 @@ const UNISENDER_API_URL = "https://api.unisender.com/ru/api/sendEmail";
 
 function getUnisenderConfig() {
   return {
-    apiKey: process.env.UNISENDER_API_KEY,
-    senderEmail: process.env.UNISENDER_SENDER_EMAIL,
-    senderName: process.env.UNISENDER_SENDER_NAME ?? "AdEarn",
+    apiKey: process.env.UNISENDER_API_KEY?.trim(),
+    senderEmail: process.env.UNISENDER_SENDER_EMAIL?.trim(),
+    senderName: (process.env.UNISENDER_SENDER_NAME ?? "AdEarn").trim(),
   };
 }
 
