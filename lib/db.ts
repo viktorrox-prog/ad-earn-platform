@@ -32,6 +32,9 @@ const RECHECK_INTERVAL_MS = 30_000;
 
 export async function isDatabaseAvailable(): Promise<boolean> {
   if (process.env.USE_DATABASE === "false") {
+    console.warn(
+      "[db] USE_DATABASE set to false — running in static mode by config."
+    );
     return false;
   }
 
@@ -53,9 +56,35 @@ export async function isDatabaseAvailable(): Promise<boolean> {
       await docClient.send(new ListTablesCommand({}));
       globalForDbAvailable._dbAvailable = true;
       globalForDbAvailable._dbAvailableTimestamp = Date.now();
+      console.warn(
+        "[db] Database connection OK — tables reachable via Document API."
+      );
       return true;
-    } catch {
-      console.warn("Database is not available. Running in static mode.");
+    } catch (err) {
+      console.warn("[db] Database is not available. Running in static mode.");
+      console.warn("[db] USE_DATABASE =", process.env.USE_DATABASE);
+      console.warn("[db] ENDPOINT =", process.env.DOCUMENT_API_ENDPOINT);
+      console.warn(
+        "[db] HAS_ACCESS_KEY_ID =",
+        Boolean(process.env.AWS_ACCESS_KEY_ID)
+      );
+      console.warn(
+        "[db] HAS_SECRET_ACCESS_KEY =",
+        Boolean(process.env.AWS_SECRET_ACCESS_KEY)
+      );
+      const e = err as { name?: string; message?: string; stack?: string };
+      console.warn(
+        "[db] Error details:",
+        JSON.stringify(
+          {
+            name: e?.name,
+            message: e?.message,
+            stack: e?.stack,
+          },
+          null,
+          2
+        )
+      );
       globalForDbAvailable._dbAvailable = false;
       globalForDbAvailable._dbAvailableTimestamp = Date.now();
       return false;
