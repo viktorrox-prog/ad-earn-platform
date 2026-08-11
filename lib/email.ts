@@ -40,7 +40,7 @@ async function sendEmail(options: SendEmailOptions): Promise<boolean> {
   }
 
   try {
-    const body = new URLSearchParams({
+       const body = new URLSearchParams({
       api_key: apiKey,
       format: "json",
       email: options.email,
@@ -48,6 +48,8 @@ async function sendEmail(options: SendEmailOptions): Promise<boolean> {
       sender_email: senderEmail,
       subject: options.subject,
       body: options.html,
+    });
+
     });
 
     const res = await fetch(UNISENDER_API_URL, {
