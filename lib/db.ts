@@ -25,15 +25,23 @@ if (process.env.NODE_ENV !== "production") globalForDb.docClient = docClient;
 const globalForDbAvailable = globalThis as unknown as {
   _dbAvailable: boolean | null;
   _dbAvailablePromise: Promise<boolean> | null;
+  _dbAvailableTimestamp: number | null;
 };
+
+const RECHECK_INTERVAL_MS = 30_000;
 
 export async function isDatabaseAvailable(): Promise<boolean> {
   if (process.env.USE_DATABASE === "false") {
     return false;
   }
 
-  if (globalForDbAvailable._dbAvailable != null) {
-    return globalForDbAvailable._dbAvailable;
+  const cached = globalForDbAvailable._dbAvailable;
+  if (cached != null) {
+    const elapsed =
+      Date.now() - (globalForDbAvailable._dbAvailableTimestamp ?? 0);
+    if (cached || elapsed < RECHECK_INTERVAL_MS) {
+      return cached;
+    }
   }
 
   if (globalForDbAvailable._dbAvailablePromise) {
@@ -44,11 +52,15 @@ export async function isDatabaseAvailable(): Promise<boolean> {
     try {
       await docClient.send(new ListTablesCommand({}));
       globalForDbAvailable._dbAvailable = true;
+      globalForDbAvailable._dbAvailableTimestamp = Date.now();
       return true;
     } catch {
       console.warn("Database is not available. Running in static mode.");
       globalForDbAvailable._dbAvailable = false;
+      globalForDbAvailable._dbAvailableTimestamp = Date.now();
       return false;
+    } finally {
+      globalForDbAvailable._dbAvailablePromise = null;
     }
   })();
 
@@ -59,4 +71,5 @@ export async function isDatabaseAvailable(): Promise<boolean> {
 export function resetDbAvailableCache(): void {
   globalForDbAvailable._dbAvailable = null;
   globalForDbAvailable._dbAvailablePromise = null;
+  globalForDbAvailable._dbAvailableTimestamp = null;
 }
