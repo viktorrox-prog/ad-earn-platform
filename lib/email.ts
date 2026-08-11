@@ -47,8 +47,7 @@ async function sendEmail(options: SendEmailOptions): Promise<boolean> {
       sender_name: senderName,
       sender_email: senderEmail,
       subject: options.subject,
-      body: options.text,
-      html_body: options.html,
+      body: options.html,
     });
 
     const res = await fetch(UNISENDER_API_URL, {
