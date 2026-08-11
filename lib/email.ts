@@ -1,32 +1,13 @@
-import nodemailer from "nodemailer";
+// Используется вместо SMTP/nodemailer, так как SMTP-подключение
+// к smtp.yandex.ru заблокировано в Timeweb App Platform.
 
-function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT ?? "587", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+const UNISENDER_API_URL = "https://api.unisender.com/ru/api/sendEmail";
 
-  if (!host || !user || !pass) {
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    tls: {
-      rejectUnauthorized: false,
-    },
-  });
-}
-
-function getSmtpConfig() {
+function getUnisenderConfig() {
   return {
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT ?? "587",
-    user: process.env.SMTP_USER,
-    secure: parseInt(process.env.SMTP_PORT ?? "587", 10) === 465,
+    apiKey: process.env.UNISENDER_API_KEY,
+    senderEmail: process.env.UNISENDER_SENDER_EMAIL,
+    senderName: process.env.UNISENDER_SENDER_NAME ?? "AdEarn",
   };
 }
 
@@ -42,27 +23,85 @@ function formatError(error: unknown): object {
   return { message: String(error) };
 }
 
-export async function sendVerificationEmail(
-  email: string,
-  code: string
-): Promise<boolean> {
-  const transporter = getTransporter();
-  if (!transporter) {
+interface SendEmailOptions {
+  email: string;
+  subject: string;
+  text: string;
+  html: string;
+}
+
+async function sendEmail(options: SendEmailOptions): Promise<boolean> {
+  const { apiKey, senderEmail, senderName } = getUnisenderConfig();
+  if (!apiKey || !senderEmail) {
     console.warn(
-      "[email] SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS env vars."
+      "[email] Unisender not configured. Set UNISENDER_API_KEY and UNISENDER_SENDER_EMAIL env vars."
     );
     return false;
   }
 
-  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER;
-
   try {
-    await transporter.sendMail({
-      from: `"AdEarn" <${from}>`,
-      to: email,
-      subject: "Код подтверждения — AdEarn",
-      text: `Ваш код подтверждения: ${code}\n\nКод действителен в течение 10 минут.`,
-      html: `<!DOCTYPE html>
+    const body = new URLSearchParams({
+      api_key: apiKey,
+      format: "json",
+      email: options.email,
+      sender_name: senderName,
+      sender_email: senderEmail,
+      subject: options.subject,
+      body: options.text,
+      html_body: options.html,
+    });
+
+    const res = await fetch(UNISENDER_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    const data: unknown = await res.json();
+
+    if (
+      res.ok &&
+      typeof data === "object" &&
+      data !== null &&
+      "result" in data &&
+      typeof (data as { result?: { email_id?: unknown } }).result?.email_id ===
+        "string"
+    ) {
+      return true;
+    }
+
+    console.error(
+      "[email] Unisender send failed:",
+      JSON.stringify(
+        {
+          status: res.status,
+          recipient: options.email,
+          senderEmail,
+          response: data,
+        },
+        null,
+        2
+      )
+    );
+    return false;
+  } catch (error) {
+    console.error(
+      "[email] Failed to send email via Unisender:",
+      JSON.stringify(formatError(error), null, 2)
+    );
+    return false;
+  }
+}
+
+export async function sendVerificationEmail(
+  email: string,
+  code: string
+): Promise<boolean> {
+  return sendEmail({
+    email,
+    subject: "Код подтверждения — AdEarn",
+    text: `Ваш код подтверждения: ${code}\n\nКод действителен в течение 10 минут.`,
+    html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; background: #0a0a0f; color: #e0e0e0; padding: 24px;">
@@ -76,42 +115,18 @@ export async function sendVerificationEmail(
   </div>
 </body>
 </html>`,
-    });
-    return true;
-  } catch (error) {
-    console.error(
-      "[email] Failed to send verification email:",
-      JSON.stringify(
-        { smtp: getSmtpConfig(), error: formatError(error) },
-        null,
-        2
-      )
-    );
-    return false;
-  }
+  });
 }
 
 export async function sendPasswordResetEmail(
   email: string,
   code: string
 ): Promise<boolean> {
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.warn(
-      "[email] SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS env vars."
-    );
-    return false;
-  }
-
-  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER;
-
-  try {
-    await transporter.sendMail({
-      from: `"AdEarn" <${from}>`,
-      to: email,
-      subject: "Сброс пароля — AdEarn",
-      text: `Ваш код для сброса пароля: ${code}\n\nКод действителен в течение 10 минут.`,
-      html: `<!DOCTYPE html>
+  return sendEmail({
+    email,
+    subject: "Сброс пароля — AdEarn",
+    text: `Ваш код для сброса пароля: ${code}\n\nКод действителен в течение 10 минут.`,
+    html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; background: #0a0a0f; color: #e0e0e0; padding: 24px;">
@@ -125,17 +140,5 @@ export async function sendPasswordResetEmail(
   </div>
 </body>
 </html>`,
-    });
-    return true;
-  } catch (error) {
-    console.error(
-      "[email] Failed to send password reset email:",
-      JSON.stringify(
-        { smtp: getSmtpConfig(), error: formatError(error) },
-        null,
-        2
-      )
-    );
-    return false;
-  }
+  });
 }
