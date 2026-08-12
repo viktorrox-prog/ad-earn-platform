@@ -394,4 +394,3 @@ export const IndexName = {
 } as const;
 
 export type IndexName = (typeof IndexName)[keyof typeof IndexName];
-
