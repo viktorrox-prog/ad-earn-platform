@@ -15,6 +15,8 @@ import {
   PriceListItem,
   MaintenanceMode,
   TaskReview,
+  Payment,
+  ReferralClick,
 } from "./models";
 
 export const mockServices: Service[] = [
@@ -154,6 +156,26 @@ export const mockTransactions: Transaction[] = [
   },
 ];
 
+export const mockReferralClicks: ReferralClick[] = [
+  {
+    id: "mock-click-1",
+    referrerId: "mock-user-1",
+    createdAt: new Date("2024-06-18T09:00:00Z").toISOString(),
+    convertedAdvertiserId: "mock-advertiser-1",
+    convertedAt: new Date("2024-06-18T10:00:00Z").toISOString(),
+  },
+  {
+    id: "mock-click-2",
+    referrerId: "mock-user-1",
+    createdAt: new Date("2024-06-19T12:00:00Z").toISOString(),
+  },
+  {
+    id: "mock-click-3",
+    referrerId: "mock-user-1",
+    createdAt: new Date("2024-06-20T15:30:00Z").toISOString(),
+  },
+];
+
 export const mockAds: Ad[] = [
   {
     id: "mock-ad-1",
@@ -218,7 +240,6 @@ export const mockAds: Ad[] = [
 ];
 
 export const mockTasks: Task[] = [
-  // Социальные задания (taskType: social)
   {
     id: "mock-task-1",
     title: "Посмотри видео на YouTube",
@@ -284,7 +305,6 @@ export const mockTasks: Task[] = [
     createdAt: new Date("2024-06-05").toISOString(),
     updatedAt: new Date("2024-06-05").toISOString(),
   },
-  // Подписки (taskType: subscription)
   {
     id: "mock-task-6",
     title: "Подпишись на Telegram-канал",
@@ -325,7 +345,6 @@ export const mockTasks: Task[] = [
     createdAt: new Date("2024-06-08").toISOString(),
     updatedAt: new Date("2024-06-08").toISOString(),
   },
-  // CPC — переходы по ссылкам (taskType: cpc)
   {
     id: "mock-task-9",
     title: "Перейди на сайт интернет-магазина",
@@ -366,7 +385,6 @@ export const mockTasks: Task[] = [
     createdAt: new Date("2024-06-11").toISOString(),
     updatedAt: new Date("2024-06-11").toISOString(),
   },
-  // Установка приложений (taskType: app_install)
   {
     id: "mock-task-12",
     title: "Установи мобильное приложение",
@@ -394,7 +412,6 @@ export const mockTasks: Task[] = [
     createdAt: new Date("2024-06-13").toISOString(),
     updatedAt: new Date("2024-06-13").toISOString(),
   },
-  // Опросы (taskType: survey)
   {
     id: "mock-task-14",
     title: "Пройди опрос про мобильные сервисы",
@@ -859,5 +876,38 @@ export const mockHomepageBanners: HomepageBanner[] = [
     status: "active",
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  },
+];
+
+export const mockPayments: Payment[] = [
+  {
+    id: "mock-payment-1",
+    userId: "mock-user-1",
+    amount: 200,
+    method: "robokassa",
+    status: "success",
+    description: "Пополнение через Робокассу",
+    createdAt: new Date("2024-06-17T12:00:00Z").toISOString(),
+    updatedAt: new Date("2024-06-17T12:00:00Z").toISOString(),
+  },
+  {
+    id: "mock-payment-2",
+    userId: "mock-user-1",
+    amount: 500,
+    method: "robokassa",
+    status: "success",
+    description: "Пополнение через Робокассу",
+    createdAt: new Date("2024-06-11T09:00:00Z").toISOString(),
+    updatedAt: new Date("2024-06-11T09:00:00Z").toISOString(),
+  },
+  {
+    id: "mock-payment-3",
+    advertiserId: "mock-advertiser-1",
+    amount: 3000,
+    method: "robokassa",
+    status: "success",
+    description: "Пополнение бюджета рекламодателя",
+    createdAt: new Date("2024-06-10T14:00:00Z").toISOString(),
+    updatedAt: new Date("2024-06-10T14:00:00Z").toISOString(),
   },
 ];
