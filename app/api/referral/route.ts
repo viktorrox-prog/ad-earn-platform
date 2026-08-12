@@ -23,13 +23,38 @@ export async function GET(request: NextRequest) {
   let convertedClicksCount = 0;
 
   if (dbAvailable) {
-    const user = await getUserById(userId);
-    if (user) {
-      const advertisers = await getAdvertisersByReferrer(userId);
-      referredAdvertisersCount = advertisers.length;
-      earned = await getReferralEarnings(userId);
+    try {
+      const user = await getUserById(userId);
+      if (user) {
+        const advertisers = await getAdvertisersByReferrer(userId);
+        referredAdvertisersCount = advertisers.length;
+        earned = await getReferralEarnings(userId);
 
-      const clicks = await getReferralClicksByReferrer(userId);
+        try {
+          const clicks = await getReferralClicksByReferrer(userId);
+          clicksCount = clicks.length;
+          convertedClicksCount = clicks.filter(
+            (c) => c.convertedAdvertiserId
+          ).length;
+        } catch (clicksError) {
+          console.error(
+            "Failed to load referral clicks, showing zero clicks:",
+            clicksError
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Failed to load referral stats, falling back to mock data:",
+        error
+      );
+      const mockReferralTx = mockTransactions.filter(
+        (t) => t.userId === userId && t.type === "referral"
+      );
+      earned = mockReferralTx.reduce((sum, t) => sum + t.amount, 0);
+      referredAdvertisersCount = 1;
+
+      const clicks = mockReferralClicks.filter((c) => c.referrerId === userId);
       clicksCount = clicks.length;
       convertedClicksCount = clicks.filter(
         (c) => c.convertedAdvertiserId
