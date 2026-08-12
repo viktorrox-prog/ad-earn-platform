@@ -43,6 +43,14 @@ export type TransactionType =
   "earnings" | "withdrawal" | "referral" | "deposit";
 export type TransactionStatus = "completed" | "pending" | "failed";
 
+export interface ReferralClick {
+  id: string;
+  referrerId: string;
+  createdAt: string;
+  convertedAdvertiserId?: string;
+  convertedAt?: string;
+}
+
 export interface Transaction {
   id: string;
   userId: string;
@@ -817,6 +825,53 @@ export async function getReferralEarnings(userId: string): Promise<number> {
     .reduce((sum, t) => sum + t.amount, 0);
 }
 
+export async function createReferralClick(
+  referrerId: string
+): Promise<ReferralClick> {
+  const click: ReferralClick = {
+    id: crypto.randomUUID(),
+    referrerId,
+    createdAt: new Date().toISOString(),
+  };
+  await docClient.send(
+    new PutCommand({ TableName: TableName.REFERRAL_CLICKS, Item: click })
+  );
+  return click;
+}
+
+export async function getReferralClicksByReferrer(
+  referrerId: string
+): Promise<ReferralClick[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: TableName.REFERRAL_CLICKS,
+      IndexName: IndexName.REFERRAL_CLICKS_REFERRER_ID,
+      KeyConditionExpression: "#referrerId = :referrerId",
+      ExpressionAttributeNames: { "#referrerId": "referrerId" },
+      ExpressionAttributeValues: { ":referrerId": referrerId },
+    })
+  );
+  return (result.Items as ReferralClick[]) ?? [];
+}
+
+export async function markReferralClickConverted(
+  clickId: string,
+  advertiserId: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TableName.REFERRAL_CLICKS,
+      Key: { id: clickId },
+      UpdateExpression:
+        "set convertedAdvertiserId = :advertiserId, convertedAt = :convertedAt",
+      ExpressionAttributeValues: {
+        ":advertiserId": advertiserId,
+        ":convertedAt": new Date().toISOString(),
+      },
+    })
+  );
+}
+
 export async function creditReferralReward(
   referrerId: string,
   amount: number,
@@ -1463,6 +1518,20 @@ export interface HomepageBanner {
   expiresAt: string;
 }
 
+export type PaymentStatus = "pending" | "success" | "fail";
+
+export interface Payment {
+  id: string;
+  userId?: string;
+  advertiserId?: string;
+  amount: number;
+  method: string;
+  status: PaymentStatus;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export async function getActiveHomepageBanners(): Promise<HomepageBanner[]> {
   const result = await docClient.send(
     new QueryCommand({
@@ -1562,4 +1631,89 @@ export async function updateAdminSettings(
   );
 
   return result.Attributes as AdminSettings;
+}
+
+export async function createPayment(
+  data: Omit<Payment, "createdAt" | "updatedAt">
+): Promise<Payment> {
+  const now = new Date().toISOString();
+  const payment: Payment = {
+    ...data,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await docClient.send(
+    new PutCommand({
+      TableName: TableName.PAYMENTS,
+      Item: payment,
+    })
+  );
+  return payment;
+}
+
+export async function updatePaymentStatus(
+  id: string,
+  status: PaymentStatus
+): Promise<Payment | null> {
+  const result = await docClient.send(
+    new UpdateCommand({
+      TableName: TableName.PAYMENTS,
+      Key: { id },
+      UpdateExpression: "set #status = :status, updatedAt = :updatedAt",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":status": status,
+        ":updatedAt": new Date().toISOString(),
+      },
+      ReturnValues: "ALL_NEW",
+    })
+  );
+  return (result.Attributes as Payment) ?? null;
+}
+
+export async function getPaymentById(id: string): Promise<Payment | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: TableName.PAYMENTS,
+      Key: { id },
+    })
+  );
+  return (result.Item as Payment) ?? null;
+}
+
+export async function getPaymentsByUserId(userId: string): Promise<Payment[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: TableName.PAYMENTS,
+      IndexName: IndexName.PAYMENTS_USER_ID,
+      KeyConditionExpression: "#userId = :userId",
+      ExpressionAttributeNames: { "#userId": "userId" },
+      ExpressionAttributeValues: { ":userId": userId },
+    })
+  );
+  return (result.Items as Payment[]) ?? [];
+}
+
+export async function getPaymentsByAdvertiserId(
+  advertiserId: string
+): Promise<Payment[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: TableName.PAYMENTS,
+      IndexName: IndexName.PAYMENTS_ADVERTISER_ID,
+      KeyConditionExpression: "#advertiserId = :advertiserId",
+      ExpressionAttributeNames: { "#advertiserId": "advertiserId" },
+      ExpressionAttributeValues: { ":advertiserId": advertiserId },
+    })
+  );
+  return (result.Items as Payment[]) ?? [];
+}
+
+export async function getAllPayments(): Promise<Payment[]> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: TableName.PAYMENTS,
+    })
+  );
+  return (result.Items as Payment[]) ?? [];
 }
