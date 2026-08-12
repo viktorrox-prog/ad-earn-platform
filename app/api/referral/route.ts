@@ -72,7 +72,8 @@ export async function GET(request: NextRequest) {
     convertedClicksCount = clicks.filter((c) => c.convertedAdvertiserId).length;
   }
 
-  const referralLink = `${request.nextUrl.origin}/advertiser?ref=${userId}`;
+  const publicOrigin = process.env.NEXT_PUBLIC_BASE_URL || "https://adearn.ru";
+  const referralLink = `${publicOrigin}/advertiser?ref=${userId}`;
 
   return NextResponse.json({
     referralLink,
