@@ -24,6 +24,8 @@ export const TableName = {
   MAINTENANCE_MODE: "maintenance_mode",
   HOMEPAGE_BANNERS: "homepage_banners",
   TASK_REVIEWS: "task_reviews",
+  PAYMENTS: "payments",
+  REFERRAL_CLICKS: "referral_clicks",
 } as const;
 
 export type TableName = (typeof TableName)[keyof typeof TableName];
@@ -74,10 +76,7 @@ export const TABLE_SCHEMAS: Record<TableName, TableSchema> = {
   },
   [TableName.VERIFICATION_CODES]: {
     name: TableName.VERIFICATION_CODES,
-      REFERRAL_CLICKS: "referral_clicks",
-
-  keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
-    
+    keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
     attributeDefinitions: [
       { AttributeName: "id", AttributeType: "S" },
       { AttributeName: "target", AttributeType: "S" },
@@ -320,6 +319,48 @@ export const TABLE_SCHEMAS: Record<TableName, TableSchema> = {
       },
     ],
   },
+  [TableName.PAYMENTS]: {
+    name: TableName.PAYMENTS,
+    keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+    attributeDefinitions: [
+      { AttributeName: "id", AttributeType: "S" },
+      { AttributeName: "userId", AttributeType: "S" },
+      { AttributeName: "advertiserId", AttributeType: "S" },
+      { AttributeName: "status", AttributeType: "S" },
+    ],
+    globalSecondaryIndexes: [
+      {
+        IndexName: "userId-index",
+        KeySchema: [{ AttributeName: "userId", KeyType: "HASH" }],
+        Projection: { ProjectionType: "ALL" },
+      },
+      {
+        IndexName: "advertiserId-index",
+        KeySchema: [{ AttributeName: "advertiserId", KeyType: "HASH" }],
+        Projection: { ProjectionType: "ALL" },
+      },
+      {
+        IndexName: "status-index",
+        KeySchema: [{ AttributeName: "status", KeyType: "HASH" }],
+        Projection: { ProjectionType: "ALL" },
+      },
+    ],
+  },
+  [TableName.REFERRAL_CLICKS]: {
+    name: TableName.REFERRAL_CLICKS,
+    keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+    attributeDefinitions: [
+      { AttributeName: "id", AttributeType: "S" },
+      { AttributeName: "referrerId", AttributeType: "S" },
+    ],
+    globalSecondaryIndexes: [
+      {
+        IndexName: "referrerId-index",
+        KeySchema: [{ AttributeName: "referrerId", KeyType: "HASH" }],
+        Projection: { ProjectionType: "ALL" },
+      },
+    ],
+  },
 };
 
 export const TABLE_NAMES: TableName[] = Object.values(TableName);
@@ -346,6 +387,11 @@ export const IndexName = {
   TASK_REVIEWS_ADVERTISER_ID: "advertiserId-index",
   TASK_REVIEWS_STATUS: "status-index",
   TASK_REVIEWS_USER_ID: "userId-index",
+  PAYMENTS_USER_ID: "userId-index",
+  PAYMENTS_ADVERTISER_ID: "advertiserId-index",
+  PAYMENTS_STATUS: "status-index",
+  REFERRAL_CLICKS_REFERRER_ID: "referrerId-index",
 } as const;
 
 export type IndexName = (typeof IndexName)[keyof typeof IndexName];
+
