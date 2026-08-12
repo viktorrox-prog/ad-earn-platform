@@ -74,7 +74,10 @@ export const TABLE_SCHEMAS: Record<TableName, TableSchema> = {
   },
   [TableName.VERIFICATION_CODES]: {
     name: TableName.VERIFICATION_CODES,
-    keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+      REFERRAL_CLICKS: "referral_clicks",
+
+  keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+    
     attributeDefinitions: [
       { AttributeName: "id", AttributeType: "S" },
       { AttributeName: "target", AttributeType: "S" },
