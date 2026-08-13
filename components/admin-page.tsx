@@ -29,6 +29,7 @@ import {
   Pencil,
   Save,
   Wrench,
+  RotateCcw,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ type AdminTab =
   | "users"
   | "campaigns"
   | "withdrawals"
+  | "payments"
   | "tickets"
   | "banners"
   | "homepage-banners"
@@ -907,6 +909,100 @@ function WithdrawalsPanel() {
   );
 }
 
+interface AdminPayment {
+  id: string;
+  userId?: string;
+  advertiserId?: string;
+  amount: number;
+  method: string;
+  status: string;
+  description?: string;
+  createdAt: string;
+}
+
+function PaymentsPanel() {
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchPayments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/payments");
+      const data = await res.json();
+      setPayments(data.payments);
+    } catch {
+      toast.error("Ошибка загрузки платежей");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPayments();
+  }, [fetchPayments]);
+
+  const statusBadge = (status: string) => {
+    const variants: Record<
+      string,
+      "default" | "secondary" | "destructive" | "outline"
+    > = {
+      pending: "secondary",
+      success: "default",
+      fail: "destructive",
+    };
+    return <Badge variant={variants[status] ?? "outline"}>{status}</Badge>;
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-24 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {payments.map((p) => (
+        <Card key={p.id}>
+          <CardContent className="py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1 min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">
+                    {p.amount.toLocaleString()} ₽
+                  </span>
+                  {statusBadge(p.status)}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>Метод: Робокасса</span>
+                  {p.userId && <span>Пользователь: {p.userId}</span>}
+                  {p.advertiserId && (
+                    <span>Рекламодатель: {p.advertiserId}</span>
+                  )}
+                  <span>{new Date(p.createdAt).toLocaleDateString("ru")}</span>
+                </div>
+                {p.description && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {p.description}
+                  </p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {payments.length === 0 && (
+        <p className="text-center text-muted-foreground py-8">
+          Платежи не найдены
+        </p>
+      )}
+    </div>
+  );
+}
+
 function TicketsPanel() {
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1469,6 +1565,59 @@ function BroadcastsPanel() {
   );
 }
 
+function ResetTestDataCard() {
+  const [loading, setLoading] = useState(false);
+
+  const handleReset = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/reset-test-data", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Ошибка обнуления");
+        return;
+      }
+      toast.success(
+        `Обнулено аккаунтов: ${data.usersReset} пользователей, ${data.advertisersReset} рекламодателей`
+      );
+    } catch {
+      toast.error("Ошибка соединения");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <RotateCcw className="h-4 w-4 text-primary" />
+          Обнуление тестовых данных
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Сбросит балансы всех пользователей и бюджеты всех рекламодателей до
+            нуля. Действие необратимо.
+          </p>
+          <Button
+            variant="destructive"
+            className="gap-2"
+            disabled={loading}
+            onClick={handleReset}
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {loading ? "Обнуление..." : "Обнулить балансы"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SettingsPanel() {
   const [settings, setSettings] = useState<{
     minCostPerView: number;
@@ -1685,6 +1834,8 @@ function SettingsPanel() {
           </div>
         </CardContent>
       </Card>
+
+      <ResetTestDataCard />
     </div>
   );
 }
@@ -1850,6 +2001,7 @@ const TABS: { id: AdminTab; label: string; icon: typeof Shield }[] = [
   { id: "users", label: "Пользователи", icon: Users },
   { id: "campaigns", label: "Кампании", icon: Megaphone },
   { id: "withdrawals", label: "Выводы", icon: Wallet },
+  { id: "payments", label: "Платежи", icon: Wallet },
   { id: "tickets", label: "Тикеты", icon: MessageSquare },
   { id: "banners", label: "Баннеры дэшборда", icon: Image },
   { id: "homepage-banners", label: "Баннеры главной", icon: Image },
@@ -1922,6 +2074,9 @@ export function AdminPage() {
         </TabsContent>
         <TabsContent value="withdrawals">
           <WithdrawalsPanel />
+        </TabsContent>
+        <TabsContent value="payments">
+          <PaymentsPanel />
         </TabsContent>
         <TabsContent value="tickets">
           <TicketsPanel />
