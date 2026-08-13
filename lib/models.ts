@@ -1117,6 +1117,53 @@ export async function getAllAdvertisers(): Promise<Advertiser[]> {
   return (result.Items as Advertiser[]) ?? [];
 }
 
+export async function getUserBalance(userId: string): Promise<number> {
+  const transactions = await getTransactionsByUserId(userId);
+  return transactions.reduce(
+    (sum, t) => (t.status === "completed" ? sum + t.amount : sum),
+    0
+  );
+}
+
+export async function deleteUserTransactions(userId: string): Promise<void> {
+  const transactions = await getTransactionsByUserId(userId);
+  for (const transaction of transactions) {
+    await docClient.send(
+      new DeleteCommand({
+        TableName: TableName.TRANSACTIONS,
+        Key: { id: transaction.id },
+      })
+    );
+  }
+}
+
+export async function resetTestBalances(): Promise<{
+  usersReset: number;
+  advertisersReset: number;
+}> {
+  const users = await getAllUsers();
+  const advertisers = await getAllAdvertisers();
+
+  let usersReset = 0;
+  for (const user of users) {
+    const balance = await getUserBalance(user.id);
+    if (balance !== 0) {
+      await deleteUserTransactions(user.id);
+      usersReset += 1;
+    }
+  }
+
+  let advertisersReset = 0;
+  for (const advertiser of advertisers) {
+    if (advertiser.balance > 0) {
+      await updateAdvertiserBalance(advertiser.id, 0);
+      advertisersReset += 1;
+    }
+  }
+
+  return { usersReset, advertisersReset };
+}
+
 export async function getPlatformStats() {
   const users = await getAllUsers();
   const transactions = await getAllTransactions();
