@@ -4,12 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:docker": "next dev -p 8080",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "build:static": "npm run db:generate && cross-env OUTPUT_MODE=export next build",
+    "start": "next start",
+    "start:all": "node scripts/start-all.js",
+    "start:deploy": "node scripts/start-deploy.js",
+    "start:prod": "next start -H 0.0.0.0",
     "check": "npm run lint && npm run typecheck",
     "lint": "eslint .",
+    "check:backlog": "tsx scripts/check-backlog.ts",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "db:migrate": "tsx scripts/migrate.ts",
+    "docker:dev": "docker-compose up --build",
+    "docker:dev:down": "docker-compose down",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -51,4 +59,3 @@
     "typescript": "^6.0.2"
   }
 }
-
