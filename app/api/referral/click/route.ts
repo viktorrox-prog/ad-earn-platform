@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isDatabaseAvailable } from "@/lib/db";
-import { createReferralClick, getUserById } from "@/lib/models";
+import { createReferralClick } from "@/lib/models";
 
 const trackClickSchema = z.object({
   referrerId: z.string().min(1).max(100),
@@ -26,14 +26,6 @@ export async function POST(request: NextRequest) {
   const { referrerId } = parsed.data;
 
   try {
-    const referringUser = await getUserById(referrerId);
-    if (!referringUser) {
-      return NextResponse.json(
-        { error: "Рекламодатель ссылки не найден" },
-        { status: 404 }
-      );
-    }
-
     const click = await createReferralClick(referrerId);
     return NextResponse.json({ clickId: click.id }, { status: 201 });
   } catch (error) {
