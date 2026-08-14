@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { topUpSchema } from "@/lib/validation/advertiser";
 import { isDatabaseAvailable } from "@/lib/db";
-import { getAdvertiserById, updateAdvertiserBalance } from "@/lib/models";
+import { getAdvertiserById } from "@/lib/models";
 import { mockAdvertisers } from "@/lib/mock-data";
 
 export async function GET(request: NextRequest) {
@@ -49,38 +49,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { advertiserId, amount, method } = parsed.data;
-
-  const dbAvailable = await isDatabaseAvailable();
-  let advertiser = null;
-
-  if (dbAvailable) {
-    advertiser = await getAdvertiserById(advertiserId);
-  } else {
-    advertiser = mockAdvertisers.find((a) => a.id === advertiserId) ?? null;
-  }
-
-  if (!advertiser) {
-    return NextResponse.json(
-      { error: "Рекламодатель не найден" },
-      { status: 404 }
-    );
-  }
-
-  const newBalance = advertiser.balance + amount;
-
-  if (dbAvailable) {
-    await updateAdvertiserBalance(advertiserId, newBalance);
-  }
-
-  return NextResponse.json({
-    success: true,
-    balance: newBalance,
-    method,
-    amount,
-    message:
-      method === "robokassa"
-        ? "Баланс пополнен через Робокассу"
-        : "Баланс пополнен через ЮMoney",
-  });
+  // Платёжные системы (Робокасса, ЮMoney) ещё не подключены.
+  // Запрещаем холостое начисление баланса без реальной оплаты.
+  return NextResponse.json(
+    {
+      error: "Платёжные системы будут доступны после запуска платформы",
+    },
+    { status: 503 }
+  );
 }
