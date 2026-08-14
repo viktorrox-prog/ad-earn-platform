@@ -843,10 +843,9 @@ export async function getReferralClicksByReferrer(
   referrerId: string
 ): Promise<ReferralClick[]> {
   const result = await docClient.send(
-    new QueryCommand({
+    new ScanCommand({
       TableName: TableName.REFERRAL_CLICKS,
-      IndexName: IndexName.REFERRAL_CLICKS_REFERRER_ID,
-      KeyConditionExpression: "#referrerId = :referrerId",
+      FilterExpression: "#referrerId = :referrerId",
       ExpressionAttributeNames: { "#referrerId": "referrerId" },
       ExpressionAttributeValues: { ":referrerId": referrerId },
     })
