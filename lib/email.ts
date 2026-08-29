@@ -8,6 +8,7 @@ function getUnisenderConfig() {
     apiKey: process.env.UNISENDER_API_KEY?.trim(),
     senderEmail: process.env.UNISENDER_SENDER_EMAIL?.trim(),
     senderName: (process.env.UNISENDER_SENDER_NAME ?? "AdEarn").trim(),
+    listId: process.env.UNISENDER_LIST_ID?.trim(),
   };
 }
 
@@ -31,10 +32,18 @@ interface SendEmailOptions {
 }
 
 async function sendEmail(options: SendEmailOptions): Promise<boolean> {
-  const { apiKey, senderEmail, senderName } = getUnisenderConfig();
+  const { apiKey, senderEmail, senderName, listId } = getUnisenderConfig();
   if (!apiKey || !senderEmail) {
     console.warn(
       "[email] Unisender not configured. Set UNISENDER_API_KEY and UNISENDER_SENDER_EMAIL env vars."
+    );
+    return false;
+  }
+
+  if (!listId) {
+    console.error(
+      "[email] Unisender list_id not set. Set UNISENDER_LIST_ID env var. Email NOT sent.",
+      { recipient: options.email, senderEmail }
     );
     return false;
   }
@@ -48,6 +57,7 @@ async function sendEmail(options: SendEmailOptions): Promise<boolean> {
       sender_email: senderEmail,
       subject: options.subject,
       body: options.html,
+      list_id: listId,
     });
 
     const res = await fetch(UNISENDER_API_URL, {
