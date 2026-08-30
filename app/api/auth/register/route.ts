@@ -60,11 +60,11 @@ export async function POST(request: NextRequest) {
 
     await sendVerificationEmail(email, code);
 
-    return NextResponse.json({
+        return NextResponse.json({
       message: "Пользователь зарегистрирован. Введите код подтверждения.",
       userId: user.id,
-      code,
     });
+
   }
 
   return NextResponse.json(
