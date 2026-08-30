@@ -55,9 +55,10 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({
-    message: "Код для сброса пароля отправлен (демо-режим)",
-  });
+    return NextResponse.json({
+      message: "Код для сброса пароля отправлен",
+    });
+
 }
 
 export async function PUT(request: NextRequest) {
