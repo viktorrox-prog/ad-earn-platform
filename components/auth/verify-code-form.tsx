@@ -4,33 +4,15 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Copy, CheckCheck } from "lucide-react";
 
 interface VerifyCodeFormProps {
   email: string;
-  displayCode?: string;
   onBack: () => void;
 }
 
-export function VerifyCodeForm({
-  email,
-  displayCode,
-  onBack,
-}: VerifyCodeFormProps) {
+export function VerifyCodeForm({ email, onBack }: VerifyCodeFormProps) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    if (!displayCode) return;
-    try {
-      await navigator.clipboard.writeText(displayCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback: select the text manually
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,38 +53,9 @@ export function VerifyCodeForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Код подтверждения отправлен на <strong>{email}</strong>
+        Мы отправили код подтверждения на <strong>{email}</strong>. Проверьте
+        почту и введите код ниже.
       </p>
-
-      {displayCode && (
-        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Код подтверждения (отправлен на email)
-          </p>
-          <div className="flex items-center gap-2">
-            <code className="select-all rounded bg-background px-3 py-1.5 text-lg font-bold tracking-widest text-primary">
-              {displayCode}
-            </code>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={handleCopy}
-            >
-              {copied ? (
-                <CheckCheck className="h-4 w-4 text-green-500" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Код действителен в течение 10 минут. Вы можете скопировать его или
-            ввести вручную.
-          </p>
-        </div>
-      )}
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Код подтверждения</label>
