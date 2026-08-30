@@ -13,7 +13,6 @@ type AuthMode = "login" | "register" | "verify" | "reset";
 export function AuthPage() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [pendingEmail, setPendingEmail] = useState("");
-  const [pendingCode, setPendingCode] = useState("");
 
   return (
     <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4 py-12">
@@ -57,9 +56,8 @@ export function AuthPage() {
             )}
             {mode === "register" && (
               <RegisterForm
-                onSuccess={(email, code) => {
+                onSuccess={(email) => {
                   setPendingEmail(email);
-                  setPendingCode(code);
                   setMode("verify");
                 }}
                 onSwitchToLogin={() => setMode("login")}
@@ -68,7 +66,6 @@ export function AuthPage() {
             {mode === "verify" && (
               <VerifyCodeForm
                 email={pendingEmail}
-                displayCode={pendingCode}
                 onBack={() => setMode("register")}
               />
             )}
