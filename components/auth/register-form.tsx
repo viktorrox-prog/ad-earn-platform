@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { registerSchema } from "@/lib/validation/auth";
 
 interface RegisterFormProps {
-  onSuccess: (email: string, code: string) => void;
+  onSuccess: (email: string) => void;
   onSwitchToLogin: () => void;
 }
 
@@ -49,7 +49,7 @@ export function RegisterForm({
       }
 
       toast.success("Код отправлен на email", { id });
-      onSuccess(email, data.code);
+      onSuccess(email);
     } catch {
       toast.error("Ошибка сети", { id });
     } finally {
