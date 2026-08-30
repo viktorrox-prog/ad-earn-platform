@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Copy, CheckCheck } from "lucide-react";
 
 interface ResetPasswordFormProps {
   onBackToLogin: () => void;
@@ -13,22 +12,9 @@ interface ResetPasswordFormProps {
 export function ResetPasswordForm({ onBackToLogin }: ResetPasswordFormProps) {
   const [step, setStep] = useState<"request" | "confirm">("request");
   const [target, setTarget] = useState("");
-  const [displayCode, setDisplayCode] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    if (!displayCode) return;
-    try {
-      await navigator.clipboard.writeText(displayCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback
-    }
-  }
 
   async function handleRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -56,7 +42,6 @@ export function ResetPasswordForm({ onBackToLogin }: ResetPasswordFormProps) {
       }
 
       toast.success("Код отправлен", { id });
-      setDisplayCode(data.code ?? "");
       setStep("confirm");
     } catch {
       toast.error("Ошибка сети", { id });
@@ -139,38 +124,9 @@ export function ResetPasswordForm({ onBackToLogin }: ResetPasswordFormProps) {
   return (
     <form onSubmit={handleConfirm} className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Код отправлен на <strong>{target}</strong>
+        Мы отправили код на <strong>{target}</strong>. Проверьте почту и введите
+        код ниже.
       </p>
-
-      {displayCode && (
-        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Код для сброса пароля (отправлен на email)
-          </p>
-          <div className="flex items-center gap-2">
-            <code className="select-all rounded bg-background px-3 py-1.5 text-lg font-bold tracking-widest text-primary">
-              {displayCode}
-            </code>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={handleCopy}
-            >
-              {copied ? (
-                <CheckCheck className="h-4 w-4 text-green-500" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Код действителен в течение 10 минут. Вы можете скопировать его или
-            ввести вручную.
-          </p>
-        </div>
-      )}
       <div className="space-y-2">
         <label className="text-sm font-medium">Код из письма/SMS</label>
         <Input
@@ -206,3 +162,4 @@ export function ResetPasswordForm({ onBackToLogin }: ResetPasswordFormProps) {
     </form>
   );
 }
+
