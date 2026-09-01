@@ -3,12 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "prebuild": "node scripts/clean-dist.js",
-  ...
-}
-
-  
-
+    "prebuild": "node scripts/clean-dist.js",
     "dev": "next dev",
     "dev:docker": "next dev -p 8080",
     "build": "next build",
