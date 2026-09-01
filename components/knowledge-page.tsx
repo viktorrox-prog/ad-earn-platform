@@ -14,6 +14,8 @@ import {
   MessageSquare,
   Shield,
   TrendingUp,
+  Globe,
+  AlertTriangle,
 } from "lucide-react";
 
 const steps = [
@@ -104,7 +106,7 @@ const faqItems = [
     value: "faq-3",
     question: "Как вывести заработанные средства?",
     answer:
-      "Перейдите в раздел «Финансы» → «Вывод средств». Укажите сумму (от 100 ₽) и реквизиты. Заявка обрабатывается до 3 рабочих дней. Доступные способы: банковские карты РФ, ЮMoney.",
+      "Перейдите в раздел «Финансы» → «Вывод средств». Укажите сумму (от 100 ₽) и реквизиты. Заявка обрабатывается до 3 рабочих дней. Доступные способы: банковские карты РФ, СБП.",
   },
   {
     value: "faq-4",
@@ -235,6 +237,53 @@ export function KnowledgePage() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Section 2.5: VPN warning */}
+        <section id="vpn" className="scroll-mt-20">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/10">
+              <Globe className="size-5 text-amber-400" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              Важно: использование VPN
+            </h2>
+          </div>
+          <p className="text-muted-foreground mb-8 ml-[52px]">
+            Внимательно ознакомьтесь с этой информацией
+          </p>
+
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="size-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-sm leading-relaxed text-foreground/90">
+                <p className="font-semibold mb-1">
+                  Платёжные системы Azvox и FreeKassa работают только через VPN.
+                </p>
+                <p className="text-muted-foreground">
+                  Для успешного пополнения баланса через Azvox или FreeKassa
+                  необходимо использовать VPN-подключение. Без VPN платёжная
+                  страница может быть недоступна или оплата может не пройти.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="size-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-sm leading-relaxed text-foreground/90">
+                <p className="font-semibold mb-1">
+                  При просмотре рекламы и выполнении заданий может потребоваться
+                  VPN.
+                </p>
+                <p className="text-muted-foreground">
+                  Ряд заданий выполняется на внешних площадках (Instagram,
+                  YouTube, VK и другие). Доступ к некоторым из них может быть
+                  ограничен на территории пользователя — в таких случаях для
+                  выполнения задания используйте VPN. Платформа не несёт
+                  ответственности за доступность внешних сервисов.
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
