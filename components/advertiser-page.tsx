@@ -26,7 +26,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -313,11 +312,10 @@ function CreateCampaignForm({
 
         <div className="space-y-2">
           <label className="text-sm font-medium">Описание</label>
-          <Textarea
+          <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Кратко опишите, что рекламируете"
-            rows={2}
           />
         </div>
 
@@ -373,11 +371,10 @@ function CreateCampaignForm({
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Описание задания</label>
-              <Textarea
+              <Input
                 value={taskDescription}
                 onChange={(e) => setTaskDescription(e.target.value)}
                 placeholder="Что нужно сделать пользователю"
-                rows={2}
               />
             </div>
           </>
