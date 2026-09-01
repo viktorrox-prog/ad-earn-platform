@@ -90,94 +90,54 @@ export async function processPaymentCallback(
 }
 
 /**
- * Создание счёта в Azvox через API new_invoice.
- * https://azvox.cash/api/v3.6/
+ * Создание счёта в Azvox прямым способом "С полным контролем":
+ * формируется готовая ссылка на форму оплаты https://azvox.cash/pay/.
+ * Используется только секретный ключ сайта AZVOX_SECRET_KEY,
+ * без авторизации через account/apiId/apiPass.
+ * https://azvox.cash/demo/direct_form.php
  */
 export async function createAzvoxPayment(
   input: PaymentInitInput
 ): Promise<InitResult> {
-  const wallet = process.env.AZVOX_WALLET;
-  const shopId = process.env.AZVOX_SHOP_ID;
-  const apiId = process.env.AZVOX_API_ID;
-  const apiPass = process.env.AZVOX_API_PASS;
+  const shopId = process.env.AZVOX_SHOP_ID?.trim();
+  const secret = process.env.AZVOX_SECRET_KEY?.trim();
 
-  if (!wallet || !shopId || !apiId || !apiPass) {
+  if (!shopId || !secret) {
     throw new PaymentNotConfiguredError();
   }
 
   const orderId = nextAzvoxOrderId();
+  const amount = input.amount.toFixed(2);
 
-  const form = new URLSearchParams();
-  form.set("account", wallet);
-  form.set("apiId", apiId);
-  form.set("apiPass", apiPass);
-  form.set("action", "new_invoice");
-  form.set("m_shop", shopId);
-  form.set("m_orderid", orderId);
-  form.set("m_amount", input.amount.toFixed(2));
-  form.set("m_curr", "RUB");
-  form.set("m_desc", "Пополнение баланса AdEarn");
-  form.set(
-    "m_params",
-    JSON.stringify({
-      shopName: "AdEarn",
-      description: "Пополнение баланса",
-    })
-  );
+  const desc = "Пополнение баланса AdEarn";
+  // m_desc и m_params передаются в base64, как требует метод pay/.
+  const m_desc = Buffer.from(desc, "utf8").toString("base64");
+  // По документации m_params = base64_encode(json_encode(false)) =
+  // base64("false"). m_params не включается в GET-ссылку, но участвует
+  // в расчёте подписи.
+  const m_params = Buffer.from("false", "utf8").toString("base64");
 
-  console.error("[Azvox] Отправка запроса на создание счёта:", {
-    account: wallet,
-    apiId,
+  // Подпись считается по base64-значениям m_desc и m_params.
+  const signRaw = [
+    shopId,
+    orderId,
+    amount,
+    "RUB",
+    m_desc,
+    m_params,
+    secret,
+  ].join(":");
+  const m_sign = sha256(signRaw).toUpperCase();
+
+  const query = new URLSearchParams({
     m_shop: shopId,
     m_orderid: orderId,
-    m_amount: input.amount.toFixed(2),
+    m_amount: amount,
     m_curr: "RUB",
+    m_desc,
+    m_sign,
   });
-
-  const response = await fetch("https://azvox.cash/api/v3.6/", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: form.toString(),
-  });
-
-  if (!response.ok) {
-    const rawBody = await response.text();
-    console.error(
-      "[Azvox] Azvox вернул не-OK статус. HTTP статус:",
-      response.status,
-      response.statusText
-    );
-    console.error("[Azvox] Полное тело ответа:", rawBody);
-    throw new Error("Azvox API error");
-  }
-
-  let data: unknown;
-  try {
-    data = await response.json();
-  } catch {
-    const rawBody = await response.text();
-    console.error(
-      "[Azvox] Ответ Azvox не является JSON. HTTP статус:",
-      response.status,
-      response.statusText
-    );
-    console.error("[Azvox] Полное тело ответа:", rawBody);
-    throw new Error("Azvox API invalid response");
-  }
-
-  console.error(
-    "[Azvox] Ответ Azvox. HTTP статус:",
-    response.status,
-    response.statusText
-  );
-  console.error("[Azvox] Полное тело ответа:", JSON.stringify(data));
-
-  const url = extractInvoiceUrl(data);
-  if (!url) {
-    console.error("[Azvox] Не найдено поле с URL счёта в ответе Azvox.");
-    console.error("[Azvox] Полная структура ответа:", JSON.stringify(data));
-    throw new Error("Azvox invoice url not found");
-  }
+  const url = `https://azvox.cash/pay/?${query.toString()}`;
 
   const dbAvailable = await isDatabaseAvailable();
   if (dbAvailable) {
@@ -192,39 +152,12 @@ export async function createAzvoxPayment(
     });
   }
 
-  console.error("[Azvox] Счёт успешно создан. URL счёта:", url);
   return { url, invId: orderId };
-}
-
-function extractInvoiceUrl(data: unknown): string | null {
-  if (!data || typeof data !== "object") return null;
-  const obj = data as Record<string, unknown>;
-  const candidates = [
-    "url",
-    "link",
-    "pay_url",
-    "payment_url",
-    "redirect",
-    "invoice_url",
-  ];
-  for (const key of candidates) {
-    const value = obj[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  if (obj.result && typeof obj.result === "object") {
-    const inner = extractInvoiceUrl(obj.result);
-    if (inner) return inner;
-  }
-  if (obj.data && typeof obj.data === "object") {
-    const inner = extractInvoiceUrl(obj.data);
-    if (inner) return inner;
-  }
-  return null;
 }
 
 /** Проверка подписи Status URL Azvox (SHA256). */
 export function verifyAzvoxSignature(params: Record<string, string>): boolean {
-  const secret = process.env.AZVOX_SECRET_KEY;
+  const secret = process.env.AZVOX_SECRET_KEY?.trim();
   if (!secret) return false;
 
   const signature = params.m_signature ?? params.signature;
@@ -260,8 +193,8 @@ export async function createFreekassaPayment(
   input: PaymentInitInput,
   baseUrl: string
 ): Promise<InitResult> {
-  const merchantId = process.env.FREEKASSA_MERCHANT_ID;
-  const secret1 = process.env.FREEKASSA_SECRET1;
+  const merchantId = process.env.FREEKASSA_MERCHANT_ID?.trim();
+  const secret1 = process.env.FREEKASSA_SECRET1?.trim();
 
   if (!merchantId || !secret1) {
     throw new PaymentNotConfiguredError();
@@ -292,7 +225,7 @@ export function freekassaFormSignature(
   amount: string,
   invId: string
 ): string {
-  const secret1 = process.env.FREEKASSA_SECRET1 ?? "";
+  const secret1 = process.env.FREEKASSA_SECRET1?.trim() ?? "";
   return md5(`${merchantId}:${amount}:${secret1}:${invId}`);
 }
 
@@ -303,7 +236,7 @@ export function verifyFreekassaCallback(
   invId: string,
   signature: string
 ): boolean {
-  const secret2 = process.env.FREEKASSA_SECRET2 ?? "";
+  const secret2 = process.env.FREEKASSA_SECRET2?.trim() ?? "";
   const expected = md5(`${merchantId}:${amount}:${secret2}:${invId}`);
   return expected.toLowerCase() === signature.toLowerCase();
 }
