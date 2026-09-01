@@ -186,7 +186,8 @@ export interface Campaign {
 }
 
 export type WithdrawalRequestStatus = "pending" | "approved" | "rejected";
-export type WithdrawalMethod = "card" | "yoomoney" | "sbp";
+export type WithdrawalMethod = "card" | "sbp";
+
 
 export interface WithdrawalRequest {
   id: string;
