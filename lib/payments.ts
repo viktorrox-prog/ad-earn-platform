@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "crypto";
-
+import { createHash } from "crypto";
+import { randomUUID } from "crypto";
 import { isDatabaseAvailable } from "@/lib/db";
 import {
   createPayment,
@@ -25,12 +25,17 @@ export interface InitResult {
   invId: string;
 }
 
-/** Генерация целочисленного order id для Azvox (Int(11)). */
-let _azvoxOrderCounter = 0;
-function nextAzvoxOrderId(): number {
-  _azvoxOrderCounter = (_azvoxOrderCounter + 1) % 1000;
-  const base = Math.floor(Date.now() / 1000) % 100000000; // 8 цифр
-  return base * 1000 + _azvoxOrderCounter; // до 11 цифр
+let azvoxOrderCounter = 0;
+
+/**
+ * Генерация целочисленного m_orderid для Azvox.
+ * Azvox требует тип Int(11), поэтому возвращаем строку до 11 цифр.
+ * Значение строится из хвоста timestamp и инкрементного счётчика для уникальности.
+ */
+export function nextAzvoxOrderId(): string {
+  const ts = Date.now() % 100_000_000;
+  azvoxOrderCounter = (azvoxOrderCounter + 1) % 1_000;
+  return `${ts}${String(azvoxOrderCounter).padStart(3, "0")}`;
 }
 
 /**
@@ -97,16 +102,9 @@ export async function createAzvoxPayment(
   const apiPass = process.env.AZVOX_API_PASS;
 
   if (!wallet || !shopId || !apiId || !apiPass) {
-    console.error("[azvox] Отсутствуют ключи конфигурации", {
-      hasWallet: !!wallet,
-      hasShopId: !!shopId,
-      hasApiId: !!apiId,
-      hasApiPass: !!apiPass,
-    });
     throw new PaymentNotConfiguredError();
   }
 
-  // Azvox требует m_orderid целым числом Int(11)
   const orderId = nextAzvoxOrderId();
 
   const form = new URLSearchParams();
@@ -115,68 +113,76 @@ export async function createAzvoxPayment(
   form.set("apiPass", apiPass);
   form.set("action", "new_invoice");
   form.set("m_shop", shopId);
-  form.set("m_orderid", String(orderId));
+  form.set("m_orderid", orderId);
   form.set("m_amount", input.amount.toFixed(2));
   form.set("m_curr", "RUB");
   form.set("m_desc", "Пополнение баланса AdEarn");
+  form.set(
+    "m_params",
+    JSON.stringify({
+      shopName: "AdEarn",
+      description: "Пополнение баланса",
+    })
+  );
 
-  console.error("[azvox] Создание платежа, запрос к API", {
+  console.error("[Azvox] Отправка запроса на создание счёта:", {
     account: wallet,
     apiId,
     m_shop: shopId,
-    m_orderid: String(orderId),
+    m_orderid: orderId,
     m_amount: input.amount.toFixed(2),
     m_curr: "RUB",
-    // apiPass не логируем (секрет)
   });
 
-  let response: Response;
-  try {
-    response = await fetch("https://azvox.cash/api/v3.6/", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-    });
-  } catch (err) {
-    console.error("[azvox] Ошибка сети при запросе к Azvox API", err);
-    throw new Error("Azvox API network error");
-  }
-
-  console.error("[azvox] HTTP статус ответа", response.status);
-
-  const rawText = await response.text();
+  const response = await fetch("https://azvox.cash/api/v3.6/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+  });
 
   if (!response.ok) {
-    console.error("[azvox] Azvox вернул не-OK статус", {
-      status: response.status,
-      body: rawText,
-    });
+    const rawBody = await response.text();
+    console.error(
+      "[Azvox] Azvox вернул не-OK статус. HTTP статус:",
+      response.status,
+      response.statusText
+    );
+    console.error("[Azvox] Полное тело ответа:", rawBody);
     throw new Error("Azvox API error");
   }
 
   let data: unknown;
   try {
-    data = JSON.parse(rawText);
+    data = await response.json();
   } catch {
-    console.error("[azvox] Ответ Azvox не является JSON", rawText);
+    const rawBody = await response.text();
+    console.error(
+      "[Azvox] Ответ Azvox не является JSON. HTTP статус:",
+      response.status,
+      response.statusText
+    );
+    console.error("[Azvox] Полное тело ответа:", rawBody);
     throw new Error("Azvox API invalid response");
   }
 
-  console.error("[azvox] Полное тело ответа Azvox", JSON.stringify(data));
+  console.error(
+    "[Azvox] Ответ Azvox. HTTP статус:",
+    response.status,
+    response.statusText
+  );
+  console.error("[Azvox] Полное тело ответа:", JSON.stringify(data));
 
   const url = extractInvoiceUrl(data);
   if (!url) {
-    console.error(
-      "[azvox] URL счёта не найден в ответе. Структура ответа:",
-      JSON.stringify(data)
-    );
+    console.error("[Azvox] Не найдено поле с URL счёта в ответе Azvox.");
+    console.error("[Azvox] Полная структура ответа:", JSON.stringify(data));
     throw new Error("Azvox invoice url not found");
   }
 
   const dbAvailable = await isDatabaseAvailable();
   if (dbAvailable) {
     await createPayment({
-      id: String(orderId),
+      id: orderId,
       userId: input.userId || undefined,
       advertiserId: input.advertiserId || undefined,
       amount: input.amount,
@@ -186,8 +192,8 @@ export async function createAzvoxPayment(
     });
   }
 
-  console.error("[azvox] Платёж создан, URL счёта получен", url);
-  return { url, invId: String(orderId) };
+  console.error("[Azvox] Счёт успешно создан. URL счёта:", url);
+  return { url, invId: orderId };
 }
 
 function extractInvoiceUrl(data: unknown): string | null {
@@ -200,10 +206,6 @@ function extractInvoiceUrl(data: unknown): string | null {
     "payment_url",
     "redirect",
     "invoice_url",
-    "payUrl",
-    "invoiceUrl",
-    "href",
-    "request_url",
   ];
   for (const key of candidates) {
     const value = obj[key];
