@@ -1,5 +1,5 @@
-import { createHash } from "crypto";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
+
 import { isDatabaseAvailable } from "@/lib/db";
 import {
   createPayment,
@@ -25,6 +25,18 @@ export interface InitResult {
   invId: string;
 }
 
+/** Генерация целочисленного order id для Azvox (Int(11)). */
+let _azvoxOrderCounter = 0;
+function nextAzvoxOrderId(): number {
+  _azvoxOrderCounter = (_azvoxOrderCounter + 1) % 1000;
+  const base = Math.floor(Date.now() / 1000) % 100000000; // 8 цифр
+  return base * 1000 + _azvoxOrderCounter; // до 11 цифр
+}
+
+/**
+ * Начисление баланса после подтверждённого callback.
+ * Если actualAmount передан, используется фактически оплаченная сумма.
+ */
 export async function processPaymentCallback(
   paymentId: string,
   method: string,
@@ -72,6 +84,10 @@ export async function processPaymentCallback(
   return true;
 }
 
+/**
+ * Создание счёта в Azvox через API new_invoice.
+ * https://azvox.cash/api/v3.6/
+ */
 export async function createAzvoxPayment(
   input: PaymentInitInput
 ): Promise<InitResult> {
@@ -90,7 +106,8 @@ export async function createAzvoxPayment(
     throw new PaymentNotConfiguredError();
   }
 
-  const orderId = randomUUID();
+  // Azvox требует m_orderid целым числом Int(11)
+  const orderId = nextAzvoxOrderId();
 
   const form = new URLSearchParams();
   form.set("account", wallet);
@@ -98,7 +115,7 @@ export async function createAzvoxPayment(
   form.set("apiPass", apiPass);
   form.set("action", "new_invoice");
   form.set("m_shop", shopId);
-  form.set("m_orderid", orderId);
+  form.set("m_orderid", String(orderId));
   form.set("m_amount", input.amount.toFixed(2));
   form.set("m_curr", "RUB");
   form.set("m_desc", "Пополнение баланса AdEarn");
@@ -107,7 +124,7 @@ export async function createAzvoxPayment(
     account: wallet,
     apiId,
     m_shop: shopId,
-    m_orderid: orderId,
+    m_orderid: String(orderId),
     m_amount: input.amount.toFixed(2),
     m_curr: "RUB",
     // apiPass не логируем (секрет)
@@ -159,7 +176,7 @@ export async function createAzvoxPayment(
   const dbAvailable = await isDatabaseAvailable();
   if (dbAvailable) {
     await createPayment({
-      id: orderId,
+      id: String(orderId),
       userId: input.userId || undefined,
       advertiserId: input.advertiserId || undefined,
       amount: input.amount,
@@ -170,7 +187,7 @@ export async function createAzvoxPayment(
   }
 
   console.error("[azvox] Платёж создан, URL счёта получен", url);
-  return { url, invId: orderId };
+  return { url, invId: String(orderId) };
 }
 
 function extractInvoiceUrl(data: unknown): string | null {
@@ -203,6 +220,7 @@ function extractInvoiceUrl(data: unknown): string | null {
   return null;
 }
 
+/** Проверка подписи Status URL Azvox (SHA256). */
 export function verifyAzvoxSignature(params: Record<string, string>): boolean {
   const secret = process.env.AZVOX_SECRET_KEY;
   if (!secret) return false;
@@ -232,6 +250,10 @@ export function verifyAzvoxSignature(params: Record<string, string>): boolean {
   return expected.toLowerCase() === signature.toLowerCase();
 }
 
+/**
+ * Формирование ссылки на форму оплаты FreeKassa.
+ * Возвращает URL внутреннего маршрута, который отдаёт самоотправляющуюся форму.
+ */
 export async function createFreekassaPayment(
   input: PaymentInitInput,
   baseUrl: string
@@ -262,6 +284,7 @@ export async function createFreekassaPayment(
   return { url, invId };
 }
 
+/** Подпись формы оплаты FreeKassa (секретное слово 1). */
 export function freekassaFormSignature(
   merchantId: string,
   amount: string,
@@ -271,6 +294,7 @@ export function freekassaFormSignature(
   return md5(`${merchantId}:${amount}:${secret1}:${invId}`);
 }
 
+/** Проверка подписи callback FreeKassa (секретное слово 2). */
 export function verifyFreekassaCallback(
   merchantId: string,
   amount: string,
