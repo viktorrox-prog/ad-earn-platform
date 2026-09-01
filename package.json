@@ -8,7 +8,6 @@
     "build": "next build",
     "build:static": "npm run db:generate && cross-env OUTPUT_MODE=export next build",
     "start": "next start",
-    "start:all": "node scripts/start-all.js",
     "start:deploy": "node scripts/start-deploy.js",
     "start:prod": "next start -H 0.0.0.0",
     "check": "npm run lint && npm run typecheck",
