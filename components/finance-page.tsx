@@ -11,7 +11,6 @@ import {
   Smartphone,
   Clock,
   RefreshCw,
-  Banknote,
   AlertCircle,
   Plus,
   Loader2,
@@ -49,14 +48,12 @@ interface WithdrawalRequest {
 }
 
 const methodLabels: Record<string, string> = {
-  robokassa: "Робокасса",
-  yoomoney: "ЮMoney",
+  azvox: "Azvox",
   card: "Банковская карта",
 };
 
 const methodIcons: Record<string, typeof CreditCard> = {
-  robokassa: Landmark,
-  yoomoney: Banknote,
+  azvox: Landmark,
   card: CreditCard,
 };
 
@@ -87,14 +84,12 @@ function FinancePage() {
   const [activeTab, setActiveTab] = useState<TabValue>("deposit");
 
   const [depositAmount, setDepositAmount] = useState("");
-  const [depositMethod, setDepositMethod] = useState<"robokassa" | "yoomoney">(
-    "robokassa"
+  const [depositMethod, setDepositMethod] = useState<"azvox" | "freekassa">(
+    "azvox"
   );
 
   const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawMethod, setWithdrawMethod] = useState<
-    "card" | "yoomoney" | "sbp"
-  >("card");
+  const [withdrawMethod, setWithdrawMethod] = useState<"card" | "sbp">("card");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
 
@@ -137,14 +132,18 @@ function FinancePage() {
       return;
     }
 
+    const endpoint =
+      depositMethod === "azvox"
+        ? "/api/payment/azvox/init"
+        : "/api/payment/freekassa/init";
+
     try {
-      const res = await fetch("/api/balance/deposit", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
           amount,
-          method: depositMethod,
         }),
       });
 
@@ -154,11 +153,7 @@ function FinancePage() {
         return;
       }
 
-      toast.success(json.message);
-      setDepositAmount("");
-
-      const balanceRes = await fetch(`/api/balance?userId=${user.id}`);
-      setData(await balanceRes.json());
+      window.location.href = json.url;
     } catch {
       toast.error("Ошибка сети");
     }
@@ -313,56 +308,36 @@ function FinancePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Button
-                    variant={
-                      depositMethod === "robokassa" ? "default" : "outline"
-                    }
-                    className="flex-1 gap-2"
-                    onClick={() => setDepositMethod("robokassa")}
-                  >
-                    <Landmark className="h-4 w-4" />
-                    Робокасса
-                  </Button>
-                  <Button
-                    variant={
-                      depositMethod === "yoomoney" ? "default" : "outline"
-                    }
-                    className="flex-1 gap-2"
-                    onClick={() => setDepositMethod("yoomoney")}
-                  >
-                    <Banknote className="h-4 w-4" />
-                    ЮMoney
-                  </Button>
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 text-amber-400 text-sm">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  Пополнение через Azvox и FreeKassa работает только через VPN.
                 </div>
 
-                {depositMethod === "robokassa" ? (
-                  <div className="space-y-4">
-                    <div className="flex flex-col items-center gap-3 py-4">
-                      <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-muted">
-                        <Landmark className="h-10 w-10 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm text-muted-foreground text-center">
-                        Пополнение через Робокассу будет доступно
-                        <br />
-                        после запуска платформы
-                      </p>
-                    </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Метод оплаты</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={
+                        depositMethod === "azvox" ? "default" : "outline"
+                      }
+                      className="flex-col gap-1.5 h-auto py-3"
+                      onClick={() => setDepositMethod("azvox")}
+                    >
+                      <Landmark className="h-5 w-5" />
+                      <span className="text-sm font-medium">Azvox</span>
+                    </Button>
+                    <Button
+                      variant={
+                        depositMethod === "freekassa" ? "default" : "outline"
+                      }
+                      className="flex-col gap-1.5 h-auto py-3"
+                      onClick={() => setDepositMethod("freekassa")}
+                    >
+                      <CreditCard className="h-5 w-5" />
+                      <span className="text-sm font-medium">FreeKassa</span>
+                    </Button>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex flex-col items-center gap-3 py-4">
-                      <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-yellow-500/10">
-                        <Banknote className="h-10 w-10 text-yellow-500" />
-                      </div>
-                      <p className="text-sm text-muted-foreground text-center">
-                        Пополнение через ЮMoney будет доступно
-                        <br />
-                        после запуска платформы
-                      </p>
-                    </div>
-                  </div>
-                )}
+                </div>
 
                 <div className="space-y-3 pt-2">
                   <p className="text-sm font-medium">Сумма пополнения</p>
@@ -390,7 +365,7 @@ function FinancePage() {
                     />
                     <Button
                       onClick={handleDeposit}
-                      disabled={true}
+                      disabled={!depositAmount || Number(depositAmount) <= 0}
                       className="gap-2 shrink-0"
                     >
                       <Plus className="h-4 w-4" />
@@ -430,16 +405,6 @@ function FinancePage() {
                       Карта
                     </Button>
                     <Button
-                      variant={
-                        withdrawMethod === "yoomoney" ? "default" : "outline"
-                      }
-                      className="flex-1 gap-2"
-                      onClick={() => setWithdrawMethod("yoomoney")}
-                    >
-                      <Banknote className="h-4 w-4" />
-                      ЮMoney
-                    </Button>
-                    <Button
                       variant={withdrawMethod === "sbp" ? "default" : "outline"}
                       className="flex-1 gap-2"
                       onClick={() => setWithdrawMethod("sbp")}
@@ -454,17 +419,13 @@ function FinancePage() {
                   <label className="text-sm font-medium">
                     {withdrawMethod === "card"
                       ? "Номер карты"
-                      : withdrawMethod === "yoomoney"
-                        ? "Номер кошелька ЮMoney"
-                        : "Номер телефона (СБП)"}
+                      : "Номер телефона (СБП)"}
                   </label>
                   <Input
                     placeholder={
                       withdrawMethod === "card"
                         ? "2200 0000 0000 0000"
-                        : withdrawMethod === "yoomoney"
-                          ? "4100xxxxxxxxxx"
-                          : "+7 (999) 000-00-00"
+                        : "+7 (999) 000-00-00"
                     }
                     value={withdrawRecipient}
                     onChange={(e) => setWithdrawRecipient(e.target.value)}
