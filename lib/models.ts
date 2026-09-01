@@ -1763,3 +1763,12 @@ export async function getAllPayments(): Promise<Payment[]> {
   );
   return (result.Items as Payment[]) ?? [];
 }
+export async function getAllChatMessages(): Promise<ChatMessage[]> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: TableName.CHAT_MESSAGES,
+    })
+  );
+  return (result.Items as ChatMessage[]) ?? [];
+}
+
