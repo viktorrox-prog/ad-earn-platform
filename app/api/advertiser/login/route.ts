@@ -19,11 +19,13 @@ export async function POST(request: NextRequest) {
   const dbAvailable = await isDatabaseAvailable();
 
   let advertiser = null;
+  let isMock = false;
 
   if (dbAvailable) {
     advertiser = await getAdvertiserByEmail(email);
   } else {
     advertiser = mockAdvertisers.find((a) => a.email === email) ?? null;
+    isMock = true;
   }
 
   if (!advertiser) {
@@ -33,7 +35,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!verifyPassword(password, advertiser.passwordHash)) {
+  if (!isMock && !verifyPassword(password, advertiser.passwordHash)) {
     return NextResponse.json({ error: "Неверный пароль" }, { status: 401 });
   }
 
