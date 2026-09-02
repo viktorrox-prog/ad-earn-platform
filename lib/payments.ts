@@ -110,14 +110,9 @@ export async function createAzvoxPayment(
   const amount = input.amount.toFixed(2);
 
   const desc = "Пополнение баланса AdEarn";
-  // m_desc и m_params передаются в base64, как требует метод pay/.
   const m_desc = Buffer.from(desc, "utf8").toString("base64");
-  // По документации m_params = base64_encode(json_encode(false)) =
-  // base64("false"). m_params не включается в GET-ссылку, но участвует
-  // в расчёте подписи.
   const m_params = Buffer.from("false", "utf8").toString("base64");
 
-  // Подпись считается по base64-значениям m_desc и m_params.
   const signRaw = [
     shopId,
     orderId,
@@ -219,14 +214,18 @@ export async function createFreekassaPayment(
   return { url, invId };
 }
 
-/** Подпись формы оплаты FreeKassa (секретное слово 1). */
+/**
+ * Подпись формы оплаты FreeKassa SCI (секретное слово 1).
+ * По документации: md5("m:oa:Секретное слово 1:currency:o").
+ */
 export function freekassaFormSignature(
   merchantId: string,
   amount: string,
-  invId: string
+  invId: string,
+  currency = "RUB"
 ): string {
   const secret1 = process.env.FREEKASSA_SECRET1?.trim() ?? "";
-  return md5(`${merchantId}:${amount}:${secret1}:${invId}`);
+  return md5(`${merchantId}:${amount}:${secret1}:${currency}:${invId}`);
 }
 
 /** Проверка подписи callback FreeKassa (секретное слово 2). */
