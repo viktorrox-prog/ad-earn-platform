@@ -7,7 +7,11 @@ import {
   ScanCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { TableName, IndexName } from "./schema";
+import {
+  CreateTableCommand,
+  DescribeTableCommand,
+} from "@aws-sdk/client-dynamodb";
+import { TableName, IndexName, TABLE_SCHEMAS } from "./schema";
 
 export interface Service {
   id: string;
@@ -40,7 +44,10 @@ export interface VerificationCode {
 }
 
 export type TransactionType =
-  "earnings" | "withdrawal" | "referral" | "deposit";
+  | "earnings"
+  | "withdrawal"
+  | "referral"
+  | "deposit";
 export type TransactionStatus = "completed" | "pending" | "failed";
 
 export interface ReferralClick {
@@ -86,7 +93,13 @@ export interface AdView {
 }
 
 export type TaskPlatform =
-  "youtube" | "vk" | "telegram" | "cpc" | "app" | "survey" | "other";
+  | "youtube"
+  | "vk"
+  | "telegram"
+  | "cpc"
+  | "app"
+  | "survey"
+  | "other";
 export type TaskActionType =
   | "watch"
   | "like"
@@ -97,7 +110,11 @@ export type TaskActionType =
   | "survey"
   | "other";
 export type TaskType =
-  "social" | "subscription" | "cpc" | "app_install" | "survey";
+  | "social"
+  | "subscription"
+  | "cpc"
+  | "app_install"
+  | "survey";
 export type TaskStatus = "active" | "inactive";
 
 export interface Task {
@@ -152,7 +169,12 @@ export interface Advertiser {
 }
 
 export type CampaignType =
-  "video" | "banner" | "cpc" | "survey" | "app_install" | "subscription";
+  | "video"
+  | "banner"
+  | "cpc"
+  | "survey"
+  | "app_install"
+  | "subscription";
 export type CampaignStatus = "active" | "paused" | "completed";
 
 export const MIN_VIEWS_BY_CAMPAIGN_TYPE: Record<CampaignType, number> = {
@@ -187,7 +209,6 @@ export interface Campaign {
 
 export type WithdrawalRequestStatus = "pending" | "approved" | "rejected";
 export type WithdrawalMethod = "card" | "sbp";
-
 
 export interface WithdrawalRequest {
   id: string;
@@ -844,9 +865,10 @@ export async function getReferralClicksByReferrer(
   referrerId: string
 ): Promise<ReferralClick[]> {
   const result = await docClient.send(
-    new ScanCommand({
+    new QueryCommand({
       TableName: TableName.REFERRAL_CLICKS,
-      FilterExpression: "#referrerId = :referrerId",
+      IndexName: IndexName.REFERRAL_CLICKS_REFERRER_ID,
+      KeyConditionExpression: "#referrerId = :referrerId",
       ExpressionAttributeNames: { "#referrerId": "referrerId" },
       ExpressionAttributeValues: { ":referrerId": referrerId },
     })
@@ -1765,25 +1787,68 @@ export async function getAllPayments(): Promise<Payment[]> {
   return (result.Items as Payment[]) ?? [];
 }
 
+export type ChatSender = "user" | "admin";
+
 export interface ChatMessage {
   id: string;
   userId: string;
-  sender: "user" | "admin";
+  sender: ChatSender;
   text: string;
   createdAt: string;
 }
 
-export async function createChatMessage(data: {
-  userId: string;
-  sender: "user" | "admin";
-  text: string;
-}): Promise<ChatMessage> {
+let chatTableEnsured = false;
+
+async function waitForChatTableActive(tableName: string): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 60_000) {
+    try {
+      const { Table } = await docClient.send(
+        new DescribeTableCommand({ TableName: tableName })
+      );
+      if (Table?.TableStatus === "ACTIVE") return;
+    } catch {
+      // таблица ещё создаётся — пробуем дальше
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
+export async function ensureChatMessagesTable(): Promise<void> {
+  if (chatTableEnsured) return;
+  const schema = TABLE_SCHEMAS[TableName.CHAT_MESSAGES];
+  try {
+    await docClient.send(
+      new CreateTableCommand({
+        TableName: schema.name,
+        KeySchema: schema.keySchema,
+        AttributeDefinitions: schema.attributeDefinitions,
+        ...(schema.globalSecondaryIndexes?.length
+          ? { GlobalSecondaryIndexes: schema.globalSecondaryIndexes }
+          : {}),
+        BillingMode: "PAY_PER_REQUEST",
+      })
+    );
+  } catch (e) {
+    const code = (e as { name?: string }).name;
+    if (code !== "ResourceInUseException") {
+      throw e;
+    }
+  }
+  await waitForChatTableActive(schema.name);
+  chatTableEnsured = true;
+}
+
+export async function createChatMessage(
+  data: Omit<ChatMessage, "id" | "createdAt">
+): Promise<ChatMessage> {
   const { randomUUID } = await import("crypto");
   const message: ChatMessage = {
     ...data,
     id: randomUUID(),
     createdAt: new Date().toISOString(),
   };
+  await ensureChatMessagesTable();
   await docClient.send(
     new PutCommand({
       TableName: TableName.CHAT_MESSAGES,
@@ -1796,23 +1861,39 @@ export async function createChatMessage(data: {
 export async function getChatMessagesByUserId(
   userId: string
 ): Promise<ChatMessage[]> {
-  const result = await docClient.send(
-    new QueryCommand({
-      TableName: TableName.CHAT_MESSAGES,
-      IndexName: IndexName.CHAT_MESSAGES_USER_ID,
-      KeyConditionExpression: "#userId = :userId",
-      ExpressionAttributeNames: { "#userId": "userId" },
-      ExpressionAttributeValues: { ":userId": userId },
-    })
-  );
-  return (result.Items as ChatMessage[]) ?? [];
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TableName.CHAT_MESSAGES,
+        IndexName: IndexName.CHAT_MESSAGES_USER_ID,
+        KeyConditionExpression: "#userId = :userId",
+        ExpressionAttributeNames: { "#userId": "userId" },
+        ExpressionAttributeValues: { ":userId": userId },
+      })
+    );
+    return (result.Items as ChatMessage[]) ?? [];
+  } catch (e) {
+    const code = (e as { name?: string }).name;
+    if (code === "ResourceNotFoundException") {
+      return [];
+    }
+    throw e;
+  }
 }
 
 export async function getAllChatMessages(): Promise<ChatMessage[]> {
-  const result = await docClient.send(
-    new ScanCommand({
-      TableName: TableName.CHAT_MESSAGES,
-    })
-  );
-  return (result.Items as ChatMessage[]) ?? [];
+  try {
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: TableName.CHAT_MESSAGES,
+      })
+    );
+    return (result.Items as ChatMessage[]) ?? [];
+  } catch (e) {
+    const code = (e as { name?: string }).name;
+    if (code === "ResourceNotFoundException") {
+      return [];
+    }
+    throw e;
+  }
 }
