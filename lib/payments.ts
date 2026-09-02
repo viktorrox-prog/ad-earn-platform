@@ -26,16 +26,29 @@ export interface InitResult {
 }
 
 let azvoxOrderCounter = 0;
+let azvoxOrderLastSec = -1;
 
 /**
  * Генерация целочисленного m_orderid для Azvox.
- * Azvox требует тип Int(11), поэтому возвращаем строку до 11 цифр.
- * Значение строится из хвоста timestamp и инкрементного счётчика для уникальности.
+ * Azvox хранит номер заказа в колонке INT (тип int32, максимум 2 147 483 647),
+ * поэтому значение обязано умещаться в этот диапазон. Прежняя реализация склеивала
+ * 8-значный хвост timestamp с 3-значным счётчиком и могла выдать 11-значное число,
+ * которое Azvox усекал до 2147483647. В колбэке тогда приходил чужой m_orderid,
+ * заказ не находился и платёж не зачислялся («Ошибка ответа — Azvox не получил ответ»).
+ *
+ * Новая реализация: база из секунд epoch по модулю 2 000 000 (период ~23 дня) плюс
+ * двузначный инкрементный счётчик. Итог всегда строго меньше 2^31 и уникален
+ * в пределах окна.
  */
 export function nextAzvoxOrderId(): string {
-  const ts = Date.now() % 100_000_000;
-  azvoxOrderCounter = (azvoxOrderCounter + 1) % 1_000;
-  return `${ts}${String(azvoxOrderCounter).padStart(3, "0")}`;
+  const sec = Math.floor(Date.now() / 1000) % 2_000_000; // 0..1 999 999
+  if (sec !== azvoxOrderLastSec) {
+    azvoxOrderLastSec = sec;
+    azvoxOrderCounter = 0;
+  } else {
+    azvoxOrderCounter = (azvoxOrderCounter + 1) % 100;
+  }
+  return String(sec * 100 + azvoxOrderCounter);
 }
 
 /**
@@ -110,9 +123,14 @@ export async function createAzvoxPayment(
   const amount = input.amount.toFixed(2);
 
   const desc = "Пополнение баланса AdEarn";
+  // m_desc и m_params передаются в base64, как требует метод pay/.
   const m_desc = Buffer.from(desc, "utf8").toString("base64");
+  // По документации m_params = base64_encode(json_encode(false)) =
+  // base64("false"). m_params не включается в GET-ссылку, но участвует
+  // в расчёте подписи.
   const m_params = Buffer.from("false", "utf8").toString("base64");
 
+  // Подпись считается по base64-значениям m_desc и m_params.
   const signRaw = [
     shopId,
     orderId,
