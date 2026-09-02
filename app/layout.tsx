@@ -10,7 +10,6 @@ import { HeaderUserMenu } from "@/components/header-user-menu";
 import { SiteFooter } from "@/components/site-footer";
 import { MaintenanceGuard } from "@/components/maintenance-guard";
 import { CosmicBackgroundWrapper } from "@/components/cosmic-background-wrapper";
-import { ChatWidget } from "@/components/chat-widget";
 
 const appName = "AdEarn";
 
@@ -50,13 +49,8 @@ export default function RootLayout({
           <MaintenanceGuard>{children}</MaintenanceGuard>
         </main>
         <SiteFooter />
-        <ChatWidget />
         <Toaster richColors position="top-right" />
       </body>
     </html>
   );
 }
-
-
-    
-
