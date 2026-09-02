@@ -43,7 +43,9 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const merchantId = String(formData.get("MERCHANT_ID") ?? "");
   const amountStr = String(formData.get("AMOUNT") ?? "");
-  const invId = String(formData.get("INV_ID") ?? "");
+  const invId = String(
+    formData.get("MERCHANT_ORDER_ID") ?? formData.get("INV_ID") ?? ""
+  );
   const signature = String(formData.get("SIGN") ?? "");
 
   return handleCallback({ merchantId, amountStr, invId, signature });
@@ -53,7 +55,9 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const merchantId = String(searchParams.get("MERCHANT_ID") ?? "");
   const amountStr = String(searchParams.get("AMOUNT") ?? "");
-  const invId = String(searchParams.get("INV_ID") ?? "");
+  const invId = String(
+    searchParams.get("MERCHANT_ORDER_ID") ?? searchParams.get("INV_ID") ?? ""
+  );
   const signature = String(searchParams.get("SIGN") ?? "");
 
   return handleCallback({ merchantId, amountStr, invId, signature });
