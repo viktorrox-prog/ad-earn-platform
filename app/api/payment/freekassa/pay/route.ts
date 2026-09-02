@@ -38,48 +38,17 @@ export async function GET(request: NextRequest) {
   const currency = "RUB";
   const sign = freekassaFormSignature(merchantId, amountStr, invId, currency);
 
-  const hiddenFields = [
-    ["m", merchantId],
-    ["oa", amountStr],
-    ["o", invId],
-    ["currency", currency],
-    ["lang", "ru"],
-    ["s", sign],
-    ["us_userId", userId],
-    ["us_advertiserId", advertiserId],
-  ]
-    .map(
-      ([name, value]) =>
-        `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`
-    )
-    .join("\n");
-
-  const html = `<!DOCTYPE html>
-<html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Переход на оплату FreeKassa</title>
-  </head>
-  <body onload="document.getElementById('fk-form').submit()">
-    <p>Перенаправляем на платёжную страницу FreeKassa…</p>
-    <form id="fk-form" action="${escapeHtml(PAYMENT_URL)}" method="GET">
-      ${hiddenFields}
-      <noscript>
-        <button type="submit">Перейти к оплате</button>
-      </noscript>
-    </form>
-  </body>
-</html>`;
-
-  return new NextResponse(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+  const query = new URLSearchParams({
+    m: merchantId,
+    oa: amountStr,
+    o: invId,
+    currency,
+    lang: "ru",
+    s: sign,
+    us_userId: userId,
+    us_advertiserId: advertiserId,
   });
-}
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;");
+  const payUrl = `${PAYMENT_URL}?${query.toString()}`;
+  return NextResponse.redirect(new URL(payUrl), 307);
 }
