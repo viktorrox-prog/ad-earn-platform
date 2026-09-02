@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { Inter } from "next/font/google";
+import { cn } from "@/lib/utils";
 import { TrendingUp } from "lucide-react";
 import { BridgeProvider } from "@/components/bridge-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -9,6 +10,7 @@ import { HeaderUserMenu } from "@/components/header-user-menu";
 import { SiteFooter } from "@/components/site-footer";
 import { MaintenanceGuard } from "@/components/maintenance-guard";
 import { CosmicBackgroundWrapper } from "@/components/cosmic-background-wrapper";
+import { ChatWidget } from "@/components/chat-widget";
 
 const appName = "AdEarn";
 
@@ -26,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className="font-sans dark __variable_f367f3">
+    <html lang="ru" className={cn("font-sans dark", inter.variable)}>
       <body className="antialiased min-h-screen bg-background flex flex-col">
         <BridgeProvider />
         <CosmicBackgroundWrapper />
@@ -48,11 +50,13 @@ export default function RootLayout({
           <MaintenanceGuard>{children}</MaintenanceGuard>
         </main>
         <SiteFooter />
+        <ChatWidget />
         <Toaster richColors position="top-right" />
       </body>
     </html>
   );
 }
+
 
     
 
