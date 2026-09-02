@@ -3,7 +3,7 @@ import { isDatabaseAvailable } from "@/lib/db";
 import { getPaymentById } from "@/lib/models";
 import { freekassaFormSignature } from "@/lib/payments";
 
-const PAYMENT_URL = "https://pay.freekassa.com/";
+const PAYMENT_URL = "https://pay.fk.money/";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -35,16 +35,18 @@ export async function GET(request: NextRequest) {
   }
 
   const amountStr = amount.toFixed(2);
-  const sign = freekassaFormSignature(merchantId, amountStr, invId);
+  const currency = "RUB";
+  const sign = freekassaFormSignature(merchantId, amountStr, invId, currency);
 
   const hiddenFields = [
-    ["MERCHANT_ID", merchantId],
-    ["AMOUNT", amountStr],
-    ["INV_ID", invId],
-    ["CURRENCY", "RUB"],
-    ["SIGN", sign],
-    ["US_userId", userId],
-    ["US_advertiserId", advertiserId],
+    ["m", merchantId],
+    ["oa", amountStr],
+    ["o", invId],
+    ["currency", currency],
+    ["lang", "ru"],
+    ["s", sign],
+    ["us_userId", userId],
+    ["us_advertiserId", advertiserId],
   ]
     .map(
       ([name, value]) =>
@@ -60,7 +62,7 @@ export async function GET(request: NextRequest) {
   </head>
   <body onload="document.getElementById('fk-form').submit()">
     <p>Перенаправляем на платёжную страницу FreeKassa…</p>
-    <form id="fk-form" action="${escapeHtml(PAYMENT_URL)}" method="POST">
+    <form id="fk-form" action="${escapeHtml(PAYMENT_URL)}" method="GET">
       ${hiddenFields}
       <noscript>
         <button type="submit">Перейти к оплате</button>
@@ -79,5 +81,5 @@ function escapeHtml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/\"/g, "&quot;");
 }
