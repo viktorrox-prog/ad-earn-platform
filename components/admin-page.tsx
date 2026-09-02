@@ -8,7 +8,6 @@ import {
   Megaphone,
   Wallet,
   MessageSquare,
-  MessageCircle,
   BarChart3,
   LogOut,
   Search,
@@ -52,7 +51,6 @@ type AdminTab =
   | "withdrawals"
   | "payments"
   | "tickets"
-  | "chat"
   | "banners"
   | "homepage-banners"
   | "broadcasts"
@@ -100,6 +98,8 @@ interface AdminWithdrawal {
   recipient: string;
   status: string;
   createdAt: string;
+  userEmail?: string;
+  userPhone?: string;
   payByDate?: string | null;
   isOverdue?: boolean;
 }
@@ -794,7 +794,9 @@ function CampaignsPanel() {
       </div>
     </div>
   );
-}function WithdrawalsPanel() {
+}
+
+function WithdrawalsPanel() {
   const [requests, setRequests] = useState<AdminWithdrawal[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -889,6 +891,12 @@ function CampaignsPanel() {
                   <span>Получатель: {r.recipient}</span>
                   <span>{new Date(r.createdAt).toLocaleDateString()}</span>
                 </div>
+                {(r.userEmail || r.userPhone) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-primary">
+                    {r.userEmail && <span>Email: {r.userEmail}</span>}
+                    {r.userPhone && <span>Тел.: {r.userPhone}</span>}
+                  </div>
+                )}
                 {r.status === "pending" && r.payByDate && (
                   <div
                     className={`flex items-center gap-1.5 text-xs mt-1 ${
@@ -2043,201 +2051,6 @@ function PriceListPanel() {
   );
 }
 
-interface AdminChatConversation {
-  userId: string;
-  messages: {
-    id: string;
-    userId: string;
-    sender: "user" | "admin";
-    text: string;
-    createdAt: string;
-  }[];
-  lastActivity: string;
-  unreadUserMessages: number;
-}
-
-function ChatPanel() {
-  const [conversations, setConversations] = useState<AdminChatConversation[]>(
-    []
-  );
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-
-  const fetchChats = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/chat");
-      const data = await res.json();
-      setConversations(data.conversations ?? []);
-      if (data.conversations?.length && !selectedUserId) {
-        setSelectedUserId(data.conversations[0].userId);
-      }
-    } catch {
-      toast.error("Ошибка загрузки чата");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedUserId]);
-
-  useEffect(() => {
-    fetchChats();
-    const timer = setInterval(fetchChats, 5000);
-    return () => clearInterval(timer);
-  }, [fetchChats]);
-
-  const selected = conversations.find((c) => c.userId === selectedUserId);
-
-  const handleSend = async () => {
-    if (!selectedUserId || !text.trim()) return;
-    setSending(true);
-    try {
-      const res = await fetch("/api/admin/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: selectedUserId, text: text.trim() }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setText("");
-        fetchChats();
-      } else {
-        toast.error(data.error || "Не удалось отправить ответ");
-      }
-    } catch {
-      toast.error("Ошибка сети");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  if (loading && conversations.length === 0) {
-    return (
-      <div className="space-y-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-16 rounded-lg" />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-      <div className="space-y-2">
-        {conversations.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8 text-sm">
-            Диалогов пока нет
-          </p>
-        ) : (
-          conversations.map((c) => (
-            <button
-              key={c.userId}
-              onClick={() => setSelectedUserId(c.userId)}
-              className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                selectedUserId === c.userId
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-card hover:bg-muted/50"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium truncate">
-                  {c.userId.slice(0, 12)}…
-                </span>
-                <span className="text-xs text-muted-foreground shrink-0">
-                  {new Date(c.lastActivity).toLocaleDateString("ru")}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                {c.messages[c.messages.length - 1]?.text ?? ""}
-              </p>
-            </button>
-          ))
-        )}
-      </div>
-
-      <Card>
-        <CardContent className="p-4">
-          {!selected ? (
-            <p className="text-center text-muted-foreground py-10 text-sm">
-              Выберите диалог слева
-            </p>
-          ) : (
-            <>
-              <div className="mb-3 flex items-center justify-between border-b border-border/60 pb-3">
-                <span className="text-sm font-medium">
-                  Чат с пользователем{" "}
-                  <span className="text-muted-foreground">
-                    {selected.userId.slice(0, 12)}…
-                  </span>
-                </span>
-                {selected.unreadUserMessages > 0 && (
-                  <Badge variant="secondary">
-                    {selected.unreadUserMessages} новых
-                  </Badge>
-                )}
-              </div>
-              <div className="max-h-[320px] space-y-2 overflow-y-auto mb-3">
-                {selected.messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
-                        m.sender === "admin"
-                          ? "bg-primary text-primary-foreground rounded-br-sm"
-                          : "bg-muted text-foreground rounded-bl-sm"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap break-words">
-                        {m.text}
-                      </p>
-                      <p
-                        className={`mt-0.5 text-[10px] ${m.sender === "admin" ? "text-primary-foreground/70" : "text-muted-foreground"}`}
-                      >
-                        {new Date(m.createdAt).toLocaleTimeString("ru", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Ваш ответ..."
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                />
-                <Button
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={sending || !text.trim()}
-                  aria-label="Отправить ответ"
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 const TABS: { id: AdminTab; label: string; icon: typeof Shield }[] = [
   { id: "stats", label: "Статистика", icon: BarChart3 },
   { id: "users", label: "Пользователи", icon: Users },
@@ -2245,7 +2058,6 @@ const TABS: { id: AdminTab; label: string; icon: typeof Shield }[] = [
   { id: "withdrawals", label: "Выводы", icon: Wallet },
   { id: "payments", label: "Платежи", icon: Wallet },
   { id: "tickets", label: "Тикеты", icon: MessageSquare },
-  { id: "chat", label: "Чат", icon: MessageCircle },
   { id: "banners", label: "Баннеры дэшборда", icon: Image },
   { id: "homepage-banners", label: "Баннеры главной", icon: Image },
   { id: "broadcasts", label: "Рассылка", icon: Megaphone },
@@ -2324,9 +2136,6 @@ export function AdminPage() {
         <TabsContent value="tickets">
           <TicketsPanel />
         </TabsContent>
-        <TabsContent value="chat">
-          <ChatPanel />
-        </TabsContent>
         <TabsContent value="banners">
           <DashboardBannersPanel />
         </TabsContent>
@@ -2346,5 +2155,3 @@ export function AdminPage() {
     </div>
   );
 }
-
-
