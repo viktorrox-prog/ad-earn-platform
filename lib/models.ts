@@ -12,7 +12,7 @@ import {
   DescribeTableCommand,
 } from "@aws-sdk/client-dynamodb";
 import { TableName, IndexName, TABLE_SCHEMAS } from "./schema";
-
+ 
 export interface Service {
   id: string;
   name: string;
