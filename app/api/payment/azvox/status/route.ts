@@ -15,24 +15,31 @@ export async function POST(request: NextRequest) {
     return new NextResponse("bad request", { status: 400 });
   }
 
+  // Неуспешный статус: подтверждаем получение корректным текстом `{m_orderid}|success`,
+  // чтобы Azvox не считал ответ ошибочным, но ничего не начисляем.
   if (status !== "success" && status !== "paid") {
     return new NextResponse(`${orderId}|success`, { status: 200 });
   }
 
+  // Успешный статус: сначала проверяем подпись SHA256.
   if (!verifyAzvoxSignature(params)) {
-    return new NextResponse("invalid signature", { status: 403 });
+    return new NextResponse(`${orderId}|error`, { status: 200 });
   }
 
-  const actualAmount = parseFloat(
-    params.m_operation_amount ?? params.m_amount ?? "0"
-  );
-
-  await processPaymentCallback(
-    orderId,
-    "azvox",
-    "Azvox",
-    Number.isFinite(actualAmount) && actualAmount > 0 ? actualAmount : undefined
-  );
+  try {
+    await processPaymentCallback(
+      orderId,
+      "azvox",
+      "Azvox",
+      Number.isFinite(Number(params.m_operation_amount)) &&
+        Number(params.m_operation_amount) > 0
+        ? Number(params.m_operation_amount)
+        : undefined
+    );
+  } catch {
+    // Возвращаем `{m_orderid}|error`, чтобы Azvox повторил запрос позже.
+    return new NextResponse(`${orderId}|error`, { status: 200 });
+  }
 
   return new NextResponse(`${orderId}|success`, { status: 200 });
 }
