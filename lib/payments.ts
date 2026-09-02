@@ -28,18 +28,6 @@ export interface InitResult {
 let azvoxOrderCounter = 0;
 let azvoxOrderLastSec = -1;
 
-/**
- * Генерация целочисленного m_orderid для Azvox.
- * Azvox хранит номер заказа в колонке INT (тип int32, максимум 2 147 483 647),
- * поэтому значение обязано умещаться в этот диапазон. Прежняя реализация склеивала
- * 8-значный хвост timestamp с 3-значным счётчиком и могла выдать 11-значное число,
- * которое Azvox усекал до 2147483647. В колбэке тогда приходил чужой m_orderid,
- * заказ не находился и платёж не зачислялся («Ошибка ответа — Azvox не получил ответ»).
- *
- * Новая реализация: база из секунд epoch по модулю 2 000 000 (период ~23 дня) плюс
- * двузначный инкрементный счётчик. Итог всегда строго меньше 2^31 и уникален
- * в пределах окна.
- */
 export function nextAzvoxOrderId(): string {
   const sec = Math.floor(Date.now() / 1000) % 2_000_000; // 0..1 999 999
   if (sec !== azvoxOrderLastSec) {
@@ -51,17 +39,6 @@ export function nextAzvoxOrderId(): string {
   return String(sec * 100 + azvoxOrderCounter);
 }
 
-/**
- * Начисление баланса после подтверждённого callback.
- * Если actualAmount передан, используется фактически оплаченная сумма.
- *
- * Возвращает boolean:
- *  - true  — платёж обработан (или уже был обработан);
- *  - false — платёж не удалось обработать (БД недоступна либо запись не найдена),
- *            при этом причина детально логируется.
- * Любое исключение при записи/начислении пробрасывается наружу (после
- * логирования), чтобы обработчик мог вернуть «|error» и Azvox повторил запрос.
- */
 export async function processPaymentCallback(
   paymentId: string,
   method: string,
@@ -147,13 +124,6 @@ export async function processPaymentCallback(
   }
 }
 
-/**
- * Создание счёта в Azvox прямым способом "С полным контролем":
- * формируется готовая ссылка на форму оплаты https://azvox.cash/pay/.
- * Используется только секретный ключ сайта AZVOX_SECRET_KEY,
- * без авторизации через account/apiId/apiPass.
- * https://azvox.cash/demo/direct_form.php
- */
 export async function createAzvoxPayment(
   input: PaymentInitInput
 ): Promise<InitResult> {
@@ -168,14 +138,9 @@ export async function createAzvoxPayment(
   const amount = input.amount.toFixed(2);
 
   const desc = "Пополнение баланса AdEarn";
-  // m_desc и m_params передаются в base64, как требует метод pay/.
   const m_desc = Buffer.from(desc, "utf8").toString("base64");
-  // По документации m_params = base64_encode(json_encode(false)) =
-  // base64("false"). m_params не включается в GET-ссылку, но участвует
-  // в расчёте подписи.
   const m_params = Buffer.from("false", "utf8").toString("base64");
 
-  // Подпись считается по base64-значениям m_desc и m_params.
   const signRaw = [
     shopId,
     orderId,
@@ -213,10 +178,6 @@ export async function createAzvoxPayment(
   return { url, invId: orderId };
 }
 
-/**
- * Порядок полей, участвующих в подписи Status URL Azvox (SHA256).
- * Поля склеиваются через ':', в конце добавляется секретный ключ.
- */
 const AZVOX_STATUS_FIELDS: readonly string[] = [
   "m_status",
   "m_operation_id",
@@ -237,14 +198,6 @@ interface AzvoxSignatureCandidate {
   hash: string;
 }
 
-/**
- * Собирает варианты ожидаемой подписи Status URL Azvox.
- *
- * Канонический порядок полей описан в AZVOX_STATUS_FIELDS. Известная неоднозначность
- * Azvox: если m_params в callback пуст или опущен, подпись может считаться как с
- * пустым сегментом («...m_desc::secret»), так и без него («...m_desc:secret»).
- * Поэтому генерируются несколько кандидатов — любой из них принимается проверкой.
- */
 function buildAzvoxSignatureCandidates(
   params: Record<string, string>,
   secret: string
@@ -257,13 +210,9 @@ function buildAzvoxSignatureCandidates(
     if (!byHash.has(hash)) byHash.set(hash, { label, hash });
   };
 
-  // Канонический вариант: все поля, пустые значения как пустой сегмент.
   add(values, "canonical");
-
-  // Вариант без m_params: некоторые версии Azvox опускают m_params из подписи.
   add(values.slice(0, AZVOX_STATUS_FIELDS.length - 1), "without-m_params");
 
-  // Вариант с отбрасыванием хвостовых пустых полей перед секретом.
   const trimmed = [...values];
   while (trimmed.length > 0 && trimmed[trimmed.length - 1] === "") {
     trimmed.pop();
@@ -275,15 +224,9 @@ function buildAzvoxSignatureCandidates(
   return Array.from(byHash.values());
 }
 
-/**
- * Проверка подписи Status URL Azvox (SHA256).
- * Возвращает true, если хотя бы один вариант ожидаемой подписи совпал с
- * пришедшей m_signature. Секретные ключи в логи не попадают — логируются только
- * значения полей callback, пришедшая подпись и хэш ожидаемых вариантов.
- */
 export function verifyAzvoxSignature(params: Record<string, string>): boolean {
   const secret = process.env.AZVOX_SECRET_KEY?.trim();
-  const signature = params.m_signature ?? params.signature;
+  const signature = params.m_sign ?? params.m_signature ?? params.signature;
 
   if (!secret || !signature) {
     console.error(
@@ -310,22 +253,18 @@ export function verifyAzvoxSignature(params: Record<string, string>): boolean {
   return false;
 }
 
-/** Значения callback для логов без m_signature (секретов в callback нет). */
 function sanitizeAzvoxParams(
   params: Record<string, string>
 ): Record<string, string> {
   const copy: Record<string, string> = {};
   for (const [key, value] of Object.entries(params)) {
+    if (key.toLowerCase() === "m_sign") continue;
     if (key.toLowerCase().includes("signature")) continue;
     copy[key] = value;
   }
   return copy;
 }
 
-/**
- * Формирование ссылки на форму оплаты FreeKassa.
- * Возвращает URL внутреннего маршрута, который отдаёт самоотправляющуюся форму.
- */
 export async function createFreekassaPayment(
   input: PaymentInitInput,
   baseUrl: string
@@ -356,10 +295,6 @@ export async function createFreekassaPayment(
   return { url, invId };
 }
 
-/**
- * Подпись формы оплаты FreeKassa SCI (секретное слово 1).
- * По документации: md5("m:oa:Секретное слово 1:currency:o").
- */
 export function freekassaFormSignature(
   merchantId: string,
   amount: string,
@@ -370,7 +305,6 @@ export function freekassaFormSignature(
   return md5(`${merchantId}:${amount}:${secret1}:${currency}:${invId}`);
 }
 
-/** Проверка подписи callback FreeKassa (секретное слово 2). */
 export function verifyFreekassaCallback(
   merchantId: string,
   amount: string,
