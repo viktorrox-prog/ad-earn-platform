@@ -20,11 +20,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ messages: [] });
   }
 
-  const messages = await getChatMessagesByUserId(userId);
-  messages.sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  );
-  return NextResponse.json({ messages });
+  try {
+    const messages = await getChatMessagesByUserId(userId);
+    messages.sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    return NextResponse.json({ messages });
+  } catch (e) {
+    console.error("Ошибка загрузки сообщений чата:", e);
+    return NextResponse.json({ messages: [] });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -44,13 +50,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const message = await createChatMessage({
-    userId: parsed.data.userId,
-    sender: "user",
-    text: parsed.data.text.trim(),
-  });
-  return NextResponse.json({
-    message: "Сообщение отправлено",
-    chatMessage: message,
-  });
+  try {
+    const message = await createChatMessage({
+      userId: parsed.data.userId,
+      sender: "user",
+      text: parsed.data.text.trim(),
+    });
+    return NextResponse.json({
+      message: "Сообщение отправлено",
+      chatMessage: message,
+    });
+  } catch (e) {
+    console.error("Ошибка отправки сообщения чата:", e);
+    return NextResponse.json(
+      { error: "Не удалось сохранить сообщение. Попробуйте позже." },
+      { status: 500 }
+    );
+  }
 }
