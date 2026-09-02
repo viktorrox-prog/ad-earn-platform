@@ -10,9 +10,10 @@ import {
 import {
   CreateTableCommand,
   DescribeTableCommand,
+  UpdateTableCommand,
 } from "@aws-sdk/client-dynamodb";
 import { TableName, IndexName, TABLE_SCHEMAS } from "./schema";
- 
+
 export interface Service {
   id: string;
   name: string;
@@ -44,10 +45,7 @@ export interface VerificationCode {
 }
 
 export type TransactionType =
-  | "earnings"
-  | "withdrawal"
-  | "referral"
-  | "deposit";
+  "earnings" | "withdrawal" | "referral" | "deposit";
 export type TransactionStatus = "completed" | "pending" | "failed";
 
 export interface ReferralClick {
@@ -93,13 +91,7 @@ export interface AdView {
 }
 
 export type TaskPlatform =
-  | "youtube"
-  | "vk"
-  | "telegram"
-  | "cpc"
-  | "app"
-  | "survey"
-  | "other";
+  "youtube" | "vk" | "telegram" | "cpc" | "app" | "survey" | "other";
 export type TaskActionType =
   | "watch"
   | "like"
@@ -110,11 +102,7 @@ export type TaskActionType =
   | "survey"
   | "other";
 export type TaskType =
-  | "social"
-  | "subscription"
-  | "cpc"
-  | "app_install"
-  | "survey";
+  "social" | "subscription" | "cpc" | "app_install" | "survey";
 export type TaskStatus = "active" | "inactive";
 
 export interface Task {
@@ -169,12 +157,7 @@ export interface Advertiser {
 }
 
 export type CampaignType =
-  | "video"
-  | "banner"
-  | "cpc"
-  | "survey"
-  | "app_install"
-  | "subscription";
+  "video" | "banner" | "cpc" | "survey" | "app_install" | "subscription";
 export type CampaignStatus = "active" | "paused" | "completed";
 
 export const MIN_VIEWS_BY_CAMPAIGN_TYPE: Record<CampaignType, number> = {
@@ -1428,6 +1411,225 @@ export async function respondToTicket(
   return (result.Attributes as Ticket) ?? null;
 }
 
+export type ChatSender = "user" | "admin";
+
+export interface ChatMessage {
+  id: string;
+  userId: string;
+  sender: ChatSender;
+  text: string;
+  createdAt: string;
+}
+
+let chatTableEnsured = false;
+
+const YANDEX_INVALID_PARAMETER = "ru.yandex.docapi.v20120810#InvalidParameter";
+
+function chatErrorName(e: unknown): string {
+  return (e as { name?: string }).name ?? "";
+}
+
+// Yandex Document API отдаёт InvalidParameter (400) там, где AWS отдал бы
+// ResourceNotFoundException — например, когда таблица не существует в
+// пространстве сервисного аккаунта, которым ходит сайт.
+function isMissingTableError(e: unknown): boolean {
+  const name = chatErrorName(e);
+  return (
+    name === "ResourceNotFoundException" || name === YANDEX_INVALID_PARAMETER
+  );
+}
+
+async function describeChatTable(): Promise<{
+  exists: boolean;
+  indexExists: boolean;
+}> {
+  try {
+    const { Table } = await docClient.send(
+      new DescribeTableCommand({ TableName: TableName.CHAT_MESSAGES })
+    );
+    return {
+      exists: true,
+      indexExists:
+        Table?.GlobalSecondaryIndexes?.some(
+          (i) => i.IndexName === IndexName.CHAT_MESSAGES_USER_ID
+        ) ?? false,
+    };
+  } catch (e) {
+    if (isMissingTableError(e)) {
+      return { exists: false, indexExists: false };
+    }
+    throw e;
+  }
+}
+
+async function waitForChatTableActive(): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 90_000) {
+    try {
+      const { Table } = await docClient.send(
+        new DescribeTableCommand({ TableName: TableName.CHAT_MESSAGES })
+      );
+      if (Table?.TableStatus === "ACTIVE") return;
+    } catch {
+      // таблица ещё создаётся
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error("Не удалось активировать таблицу чата");
+}
+
+async function waitForChatIndexActive(): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 90_000) {
+    const { Table } = await docClient.send(
+      new DescribeTableCommand({ TableName: TableName.CHAT_MESSAGES })
+    );
+    const idx = Table?.GlobalSecondaryIndexes?.find(
+      (i) => i.IndexName === IndexName.CHAT_MESSAGES_USER_ID
+    );
+    if (idx?.IndexStatus === "ACTIVE") return;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error("Не удалось активировать индекс userId-index таблицы чата");
+}
+
+export async function ensureChatMessagesTable(): Promise<void> {
+  if (chatTableEnsured) return;
+
+  const schema = TABLE_SCHEMAS[TableName.CHAT_MESSAGES];
+  let status = await describeChatTable();
+
+  if (!status.exists) {
+    try {
+      await docClient.send(
+        new CreateTableCommand({
+          TableName: schema.name,
+          KeySchema: schema.keySchema,
+          AttributeDefinitions: schema.attributeDefinitions,
+          ...(schema.globalSecondaryIndexes?.length
+            ? { GlobalSecondaryIndexes: schema.globalSecondaryIndexes }
+            : {}),
+          BillingMode: "PAY_PER_REQUEST",
+        })
+      );
+      await waitForChatTableActive();
+      status = await describeChatTable();
+    } catch {
+      // Yandex Document API может вернуть InvalidParameter вместо
+      // ResourceInUseException, если таблица уже есть в общем пространстве, либо
+      // CreateTable запрещён правами сервисного аккаунта. Перепроверяем.
+      const retry = await describeChatTable().catch(() => ({
+        exists: false,
+        indexExists: false,
+      }));
+      if (!retry.exists) {
+        throw new Error(
+          "Таблица чата недоступна. Создайте таблицу chat_messages через сервисный аккаунт vibecraft-service-connection или выполните миграции."
+        );
+      }
+      status = retry;
+    }
+  }
+
+  if (status.exists && !status.indexExists) {
+    try {
+      await docClient.send(
+        new UpdateTableCommand({
+          TableName: TableName.CHAT_MESSAGES,
+          AttributeDefinitions: schema.attributeDefinitions,
+          GlobalSecondaryIndexUpdates: schema.globalSecondaryIndexes?.map(
+            (idx) => ({ Create: idx })
+          ),
+        })
+      );
+      await waitForChatIndexActive();
+    } catch (e) {
+      const name = chatErrorName(e);
+      if (
+        name !== "ResourceInUseException" &&
+        name !== YANDEX_INVALID_PARAMETER
+      ) {
+        throw new Error(
+          "Не удалось создать индекс userId-index для таблицы чата."
+        );
+      }
+    }
+  }
+
+  chatTableEnsured = true;
+}
+
+export async function createChatMessage(
+  data: Omit<ChatMessage, "id" | "createdAt">
+): Promise<ChatMessage> {
+  const { randomUUID } = await import("crypto");
+  const message: ChatMessage = {
+    ...data,
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+  };
+  await ensureChatMessagesTable();
+  await docClient.send(
+    new PutCommand({
+      TableName: TableName.CHAT_MESSAGES,
+      Item: message,
+    })
+  );
+  return message;
+}
+
+export async function getChatMessagesByUserId(
+  userId: string
+): Promise<ChatMessage[]> {
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TableName.CHAT_MESSAGES,
+        IndexName: IndexName.CHAT_MESSAGES_USER_ID,
+        KeyConditionExpression: "#userId = :userId",
+        ExpressionAttributeNames: { "#userId": "userId" },
+        ExpressionAttributeValues: { ":userId": userId },
+      })
+    );
+    return (result.Items as ChatMessage[]) ?? [];
+  } catch (e) {
+    if (chatErrorName(e) === YANDEX_INVALID_PARAMETER) {
+      // GSI userId-index отсутствует в таблице — Yandex Document API отвечает
+      // InvalidParameter там, где AWS вернул бы ResourceNotFoundException.
+      // Читаем историю через Scan по таблице с фильтром по userId.
+      const result = await docClient.send(
+        new ScanCommand({
+          TableName: TableName.CHAT_MESSAGES,
+          FilterExpression: "#userId = :userId",
+          ExpressionAttributeNames: { "#userId": "userId" },
+          ExpressionAttributeValues: { ":userId": userId },
+        })
+      );
+      return (result.Items as ChatMessage[]) ?? [];
+    }
+    if (isMissingTableError(e)) {
+      return [];
+    }
+    throw e;
+  }
+}
+
+export async function getAllChatMessages(): Promise<ChatMessage[]> {
+  try {
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: TableName.CHAT_MESSAGES,
+      })
+    );
+    return (result.Items as ChatMessage[]) ?? [];
+  } catch (e) {
+    if (isMissingTableError(e)) {
+      return [];
+    }
+    throw e;
+  }
+}
+
 export interface AdminSettings {
   id: string;
   minCostPerView: number;
@@ -1785,115 +1987,4 @@ export async function getAllPayments(): Promise<Payment[]> {
     })
   );
   return (result.Items as Payment[]) ?? [];
-}
-
-export type ChatSender = "user" | "admin";
-
-export interface ChatMessage {
-  id: string;
-  userId: string;
-  sender: ChatSender;
-  text: string;
-  createdAt: string;
-}
-
-let chatTableEnsured = false;
-
-async function waitForChatTableActive(tableName: string): Promise<void> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 60_000) {
-    try {
-      const { Table } = await docClient.send(
-        new DescribeTableCommand({ TableName: tableName })
-      );
-      if (Table?.TableStatus === "ACTIVE") return;
-    } catch {
-      // таблица ещё создаётся — пробуем дальше
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-}
-
-export async function ensureChatMessagesTable(): Promise<void> {
-  if (chatTableEnsured) return;
-  const schema = TABLE_SCHEMAS[TableName.CHAT_MESSAGES];
-  try {
-    await docClient.send(
-      new CreateTableCommand({
-        TableName: schema.name,
-        KeySchema: schema.keySchema,
-        AttributeDefinitions: schema.attributeDefinitions,
-        ...(schema.globalSecondaryIndexes?.length
-          ? { GlobalSecondaryIndexes: schema.globalSecondaryIndexes }
-          : {}),
-        BillingMode: "PAY_PER_REQUEST",
-      })
-    );
-  } catch (e) {
-    const code = (e as { name?: string }).name;
-    if (code !== "ResourceInUseException") {
-      throw e;
-    }
-  }
-  await waitForChatTableActive(schema.name);
-  chatTableEnsured = true;
-}
-
-export async function createChatMessage(
-  data: Omit<ChatMessage, "id" | "createdAt">
-): Promise<ChatMessage> {
-  const { randomUUID } = await import("crypto");
-  const message: ChatMessage = {
-    ...data,
-    id: randomUUID(),
-    createdAt: new Date().toISOString(),
-  };
-  await ensureChatMessagesTable();
-  await docClient.send(
-    new PutCommand({
-      TableName: TableName.CHAT_MESSAGES,
-      Item: message,
-    })
-  );
-  return message;
-}
-
-export async function getChatMessagesByUserId(
-  userId: string
-): Promise<ChatMessage[]> {
-  try {
-    const result = await docClient.send(
-      new QueryCommand({
-        TableName: TableName.CHAT_MESSAGES,
-        IndexName: IndexName.CHAT_MESSAGES_USER_ID,
-        KeyConditionExpression: "#userId = :userId",
-        ExpressionAttributeNames: { "#userId": "userId" },
-        ExpressionAttributeValues: { ":userId": userId },
-      })
-    );
-    return (result.Items as ChatMessage[]) ?? [];
-  } catch (e) {
-    const code = (e as { name?: string }).name;
-    if (code === "ResourceNotFoundException") {
-      return [];
-    }
-    throw e;
-  }
-}
-
-export async function getAllChatMessages(): Promise<ChatMessage[]> {
-  try {
-    const result = await docClient.send(
-      new ScanCommand({
-        TableName: TableName.CHAT_MESSAGES,
-      })
-    );
-    return (result.Items as ChatMessage[]) ?? [];
-  } catch (e) {
-    const code = (e as { name?: string }).name;
-    if (code === "ResourceNotFoundException") {
-      return [];
-    }
-    throw e;
-  }
 }
