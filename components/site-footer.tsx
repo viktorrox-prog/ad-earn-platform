@@ -28,8 +28,8 @@ const knowledgeLinks = [
 
 const contactLinks = [
   {
-    label: "viktor.rox@yandex.ru",
-    href: "mailto:viktor.rox@yandex.ru",
+    label: "support@adearn.ru",
+    href: "mailto:support@adearn.ru",
     icon: Mail,
   },
 ];
