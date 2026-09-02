@@ -1764,6 +1764,50 @@ export async function getAllPayments(): Promise<Payment[]> {
   );
   return (result.Items as Payment[]) ?? [];
 }
+
+export interface ChatMessage {
+  id: string;
+  userId: string;
+  sender: "user" | "admin";
+  text: string;
+  createdAt: string;
+}
+
+export async function createChatMessage(data: {
+  userId: string;
+  sender: "user" | "admin";
+  text: string;
+}): Promise<ChatMessage> {
+  const { randomUUID } = await import("crypto");
+  const message: ChatMessage = {
+    ...data,
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+  };
+  await docClient.send(
+    new PutCommand({
+      TableName: TableName.CHAT_MESSAGES,
+      Item: message,
+    })
+  );
+  return message;
+}
+
+export async function getChatMessagesByUserId(
+  userId: string
+): Promise<ChatMessage[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: TableName.CHAT_MESSAGES,
+      IndexName: IndexName.CHAT_MESSAGES_USER_ID,
+      KeyConditionExpression: "#userId = :userId",
+      ExpressionAttributeNames: { "#userId": "userId" },
+      ExpressionAttributeValues: { ":userId": userId },
+    })
+  );
+  return (result.Items as ChatMessage[]) ?? [];
+}
+
 export async function getAllChatMessages(): Promise<ChatMessage[]> {
   const result = await docClient.send(
     new ScanCommand({
@@ -1772,4 +1816,3 @@ export async function getAllChatMessages(): Promise<ChatMessage[]> {
   );
   return (result.Items as ChatMessage[]) ?? [];
 }
-
