@@ -137,8 +137,8 @@ const faqItems = [
 const contacts = [
   {
     icon: Mail,
-    label: "viktor.rox@yandex.ru",
-    href: "mailto:viktor.rox@yandex.ru",
+    label: "support@adearn.ru",
+    href: "mailto:support@adearn.ru",
     description: "Напишите нам на почту — отвечаем в течение 2 часов",
   },
 ];
