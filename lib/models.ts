@@ -156,12 +156,12 @@ export type CampaignType =
 export type CampaignStatus = "active" | "paused" | "completed";
 
 export const MIN_VIEWS_BY_CAMPAIGN_TYPE: Record<CampaignType, number> = {
-  video: 500,
-  banner: 400,
-  cpc: 200,
-  survey: 100,
-  app_install: 50,
-  subscription: 100,
+  video: 250,
+  banner: 200,
+  cpc: 100,
+  survey: 50,
+  app_install: 25,
+  subscription: 50,
 };
 
 export interface Campaign {
