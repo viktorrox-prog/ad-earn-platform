@@ -6,11 +6,25 @@ import { createBroadcastSchema } from "@/lib/validation/admin";
 
 export async function GET() {
   const dbAvailable = await isDatabaseAvailable();
-  if (!dbAvailable) {
-    return NextResponse.json({ broadcasts: mockBroadcasts });
+  let broadcasts = mockBroadcasts;
+  if (dbAvailable) {
+    try {
+      const dbBroadcasts = await getAllBroadcasts();
+      if (dbBroadcasts.length > 0) {
+        broadcasts = dbBroadcasts;
+      }
+    } catch (err) {
+      console.warn("Failed to load broadcasts from DB", err);
+    }
   }
-  const broadcasts = await getAllBroadcasts();
-  return NextResponse.json({ broadcasts });
+  const normalized = broadcasts.map((b) => ({
+    ...b,
+    id: b.id ?? "",
+    title: b.title ?? "Рассылка",
+    message: b.message ?? "",
+    createdAt: b.createdAt ?? new Date().toISOString(),
+  }));
+  return NextResponse.json({ broadcasts: normalized });
 }
 
 export async function POST(request: NextRequest) {
@@ -30,7 +44,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const broadcast = await createBroadcast(parsed.data);
+  let broadcast;
+  try {
+    broadcast = await createBroadcast(parsed.data);
+  } catch (err) {
+    console.warn("Failed to create broadcast", err);
+    return NextResponse.json(
+      { error: "Ошибка создания рассылки" },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({ broadcast }, { status: 201 });
 }
