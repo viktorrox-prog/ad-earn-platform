@@ -193,12 +193,26 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
 function StatsOverview() {
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/stats")
-      .then((r) => r.json())
-      .then(setStats);
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error ?? "Ошибка загрузки статистики");
+        return data;
+      })
+      .then(setStats)
+      .catch(() => setError(true));
   }, []);
+
+  if (error) {
+    return (
+      <p className="text-center text-muted-foreground py-8">
+        Не удалось загрузить статистику
+      </p>
+    );
+  }
 
   if (!stats) {
     return (
@@ -271,7 +285,7 @@ function UsersPanel() {
     try {
       const res = await fetch("/api/admin/users");
       const data = await res.json();
-      setUsers(data.users);
+      setUsers(Array.isArray(data.users) ? data.users : []);
     } catch {
       toast.error("Ошибка загрузки пользователей");
     } finally {
@@ -443,7 +457,7 @@ function CampaignsPanel() {
     try {
       const res = await fetch("/api/admin/campaigns");
       const data = await res.json();
-      setCampaigns(data.campaigns);
+      setCampaigns(Array.isArray(data.campaigns) ? data.campaigns : []);
     } catch {
       toast.error("Ошибка загрузки кампаний");
     } finally {
@@ -805,7 +819,9 @@ function WithdrawalsPanel() {
     try {
       const res = await fetch("/api/admin/withdrawals");
       const data = await res.json();
-      setRequests(data.withdrawalRequests);
+      setRequests(
+        Array.isArray(data.withdrawalRequests) ? data.withdrawalRequests : []
+      );
     } catch {
       toast.error("Ошибка загрузки заявок");
     } finally {
@@ -963,7 +979,7 @@ function PaymentsPanel() {
     try {
       const res = await fetch("/api/admin/payments");
       const data = await res.json();
-      setPayments(data.payments);
+      setPayments(Array.isArray(data.payments) ? data.payments : []);
     } catch {
       toast.error("Ошибка загрузки платежей");
     } finally {
@@ -1011,7 +1027,7 @@ function PaymentsPanel() {
                   {statusBadge(p.status)}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>Метод: Azvox</span>
+                  <span>Метод: {p.method ?? "Azvox"}</span>
                   {p.userId && <span>Пользователь: {p.userId}</span>}
                   {p.advertiserId && (
                     <span>Рекламодатель: {p.advertiserId}</span>
@@ -1048,7 +1064,7 @@ function TicketsPanel() {
     try {
       const res = await fetch("/api/admin/tickets");
       const data = await res.json();
-      setTickets(data.tickets);
+      setTickets(Array.isArray(data.tickets) ? data.tickets : []);
     } catch {
       toast.error("Ошибка загрузки тикетов");
     } finally {
@@ -1190,7 +1206,7 @@ function DashboardBannersPanel() {
     try {
       const res = await fetch("/api/admin/dashboard-banners");
       const data = await res.json();
-      setBanners(data.banners);
+      setBanners(Array.isArray(data.banners) ? data.banners : []);
     } catch {
       toast.error("Ошибка загрузки баннеров");
     } finally {
@@ -1333,7 +1349,7 @@ function HomepageBannersPanel() {
     try {
       const res = await fetch("/api/admin/homepage-banners");
       const data = await res.json();
-      setBanners(data.banners);
+      setBanners(Array.isArray(data.banners) ? data.banners : []);
     } catch {
       toast.error("Ошибка загрузки баннеров главной");
     } finally {
@@ -1476,7 +1492,7 @@ function BroadcastsPanel() {
     try {
       const res = await fetch("/api/admin/broadcasts");
       const data = await res.json();
-      setBroadcasts(data.broadcasts);
+      setBroadcasts(Array.isArray(data.broadcasts) ? data.broadcasts : []);
     } catch {
       toast.error("Ошибка загрузки рассылок");
     } finally {
