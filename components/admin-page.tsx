@@ -632,14 +632,20 @@ function CampaignsPanel() {
               {(form.type === "video" || form.type === "banner") && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">
-                    Ссылка на креатив
+                    {form.type === "banner"
+                      ? "Ссылка на картинку баннера"
+                      : "Ссылка на видео"}
                   </label>
                   <Input
                     value={form.mediaUrl}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, mediaUrl: e.target.value }))
                     }
-                    placeholder="https://example.com/video.mp4"
+                    placeholder={
+                      form.type === "banner"
+                        ? "https://example.com/banner.jpg"
+                        : "https://example.com/video.mp4"
+                    }
                   />
                 </div>
               )}
@@ -650,14 +656,28 @@ function CampaignsPanel() {
                 <>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">
-                      Целевая ссылка
+                      {form.type === "cpc"
+                        ? "Ссылка для перехода"
+                        : form.type === "survey"
+                          ? "Ссылка на опрос/анкету"
+                          : form.type === "app_install"
+                            ? "Ссылка на приложение"
+                            : "Ссылка на канал"}
                     </label>
                     <Input
                       value={form.targetUrl}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, targetUrl: e.target.value }))
                       }
-                      placeholder="https://example.com"
+                      placeholder={
+                        form.type === "cpc"
+                          ? "https://example.com/landing"
+                          : form.type === "survey"
+                            ? "https://example.com/survey"
+                            : form.type === "app_install"
+                              ? "https://play.google.com/store/apps/details?id=..."
+                              : "https://t.me/channel"
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -1027,7 +1047,7 @@ function PaymentsPanel() {
                   {statusBadge(p.status)}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>Метод: {p.method ?? "Azvox"}</span>
+                  <span>Метод: Azvox</span>
                   {p.userId && <span>Пользователь: {p.userId}</span>}
                   {p.advertiserId && (
                     <span>Рекламодатель: {p.advertiserId}</span>
