@@ -578,6 +578,16 @@ function CreateCampaignForm({
     });
   }, [type, minViewsForType]);
 
+  useEffect(() => {
+    setViews((prev) => {
+      const num = Number(prev);
+      if (!prev || num < minViewsForType) {
+        return String(minViewsForType);
+      }
+      return prev;
+    });
+  }, [type, minViewsForType]);
+
   const isMediaType = type === "video" || type === "banner";
 
   const computedBudget =
@@ -744,11 +754,19 @@ function CreateCampaignForm({
 
       {isMediaType ? (
         <div className="space-y-2">
-          <label className="text-sm font-medium">Ссылка на креатив</label>
+          <label className="text-sm font-medium">
+            {type === "banner"
+              ? "Ссылка на картинку баннера"
+              : "Ссылка на видео"}
+          </label>
           <Input
             value={mediaUrl}
             onChange={(e) => setMediaUrl(e.target.value)}
-            placeholder="https://example.com/video.mp4"
+            placeholder={
+              type === "banner"
+                ? "https://example.com/banner.jpg"
+                : "https://example.com/video.mp4"
+            }
             type="url"
             required
           />
@@ -756,11 +774,27 @@ function CreateCampaignForm({
       ) : (
         <>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Целевая ссылка</label>
+            <label className="text-sm font-medium">
+              {type === "cpc"
+                ? "Ссылка для перехода"
+                : type === "survey"
+                  ? "Ссылка на опрос/анкету"
+                  : type === "app_install"
+                    ? "Ссылка на приложение"
+                    : "Ссылка на канал"}
+            </label>
             <Input
               value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)}
-              placeholder="https://example.com"
+              placeholder={
+                type === "cpc"
+                  ? "https://example.com/landing"
+                  : type === "survey"
+                    ? "https://example.com/survey"
+                    : type === "app_install"
+                      ? "https://play.google.com/store/apps/details?id=..."
+                      : "https://t.me/channel"
+              }
               type="url"
               required
             />
@@ -1436,4 +1470,3 @@ export function AdvertiserPage() {
     </div>
   );
 }
-
