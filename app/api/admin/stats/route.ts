@@ -22,17 +22,21 @@ export async function GET() {
   let campaigns = mockCampaigns;
 
   if (dbAvailable) {
-    const [dbUsers, dbTransactions, dbAdvertisers, dbCampaigns] =
-      await Promise.all([
-        getAllUsers(),
-        getAllTransactions(),
-        getAllAdvertisers(),
-        getAllCampaigns(),
-      ]);
-    if (dbUsers.length > 0) users = dbUsers;
-    if (dbTransactions.length > 0) transactions = dbTransactions;
-    if (dbAdvertisers.length > 0) advertisers = dbAdvertisers;
-    if (dbCampaigns.length > 0) campaigns = dbCampaigns;
+    try {
+      const [dbUsers, dbTransactions, dbAdvertisers, dbCampaigns] =
+        await Promise.all([
+          getAllUsers(),
+          getAllTransactions(),
+          getAllAdvertisers(),
+          getAllCampaigns(),
+        ]);
+      if (dbUsers.length > 0) users = dbUsers;
+      if (dbTransactions.length > 0) transactions = dbTransactions;
+      if (dbAdvertisers.length > 0) advertisers = dbAdvertisers;
+      if (dbCampaigns.length > 0) campaigns = dbCampaigns;
+    } catch (err) {
+      console.warn("Failed to load stats from DB", err);
+    }
   }
 
   const totalUsers = users.length;
@@ -41,11 +45,11 @@ export async function GET() {
 
   const turnover = transactions
     .filter((t) => t.status === "completed" && t.type !== "withdrawal")
-    .reduce((sum, t) => sum + Math.max(0, t.amount), 0);
+    .reduce((sum, t) => sum + Math.max(0, Number(t.amount) || 0), 0);
 
   const withdrawn = transactions
     .filter((t) => t.status === "completed" && t.type === "withdrawal")
-    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0);
 
   const activeCampaigns = campaigns.filter((c) => c.status === "active").length;
 
