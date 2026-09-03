@@ -19,12 +19,35 @@ export async function GET() {
   const dbAvailable = await isDatabaseAvailable();
   let campaigns = mockCampaigns;
   if (dbAvailable) {
-    const dbCampaigns = await getAllCampaigns();
-    if (dbCampaigns.length > 0) {
-      campaigns = dbCampaigns;
+    try {
+      const dbCampaigns = await getAllCampaigns();
+      if (dbCampaigns.length > 0) {
+        campaigns = dbCampaigns;
+      }
+    } catch (err) {
+      console.warn("Failed to load campaigns from DB", err);
     }
   }
-  return NextResponse.json({ campaigns });
+
+  const normalized = campaigns.map((c) => ({
+    ...c,
+    id: c.id ?? "",
+    advertiserId: c.advertiserId ?? "",
+    title: c.title ?? "Без названия",
+    description: c.description ?? "",
+    type: c.type ?? "video",
+    status: c.status ?? "moderation",
+    duration: Number(c.duration) || 0,
+    budget: Number(c.budget) || 0,
+    costPerView: Number(c.costPerView) || 0,
+    views: Number(c.views) || 0,
+    spend: Number(c.spend) || 0,
+    clicks: Number(c.clicks) || 0,
+    completions: Number(c.completions) || 0,
+    createdAt: c.createdAt ?? new Date().toISOString(),
+  }));
+
+  return NextResponse.json({ campaigns: normalized });
 }
 
 export async function POST(request: NextRequest) {
@@ -61,20 +84,24 @@ export async function POST(request: NextRequest) {
     const dbAvailable = await isDatabaseAvailable();
 
     if (dbAvailable) {
-      const campaign = await createCampaign({
-        advertiserId: "admin",
-        title,
-        description,
-        type,
-        mediaUrl: mediaUrl || undefined,
-        targetUrl: targetUrl || undefined,
-        taskDescription: taskDescription || undefined,
-        budget,
-        duration,
-        costPerView,
-        status: "active",
-      });
-      return NextResponse.json(campaign);
+      try {
+        const campaign = await createCampaign({
+          advertiserId: "admin",
+          title,
+          description,
+          type,
+          mediaUrl: mediaUrl || undefined,
+          targetUrl: targetUrl || undefined,
+          taskDescription: taskDescription || undefined,
+          budget,
+          duration,
+          costPerView,
+          status: "active",
+        });
+        return NextResponse.json(campaign);
+      } catch (err) {
+        console.warn("Failed to create campaign in DB", err);
+      }
     }
 
     const { randomUUID } = await import("crypto");
@@ -115,7 +142,11 @@ export async function POST(request: NextRequest) {
   const dbAvailable = await isDatabaseAvailable();
 
   if (dbAvailable) {
-    await updateCampaignStatus(campaignId, status);
+    try {
+      await updateCampaignStatus(campaignId, status);
+    } catch (err) {
+      console.warn("Failed to update campaign status in DB", err);
+    }
   }
 
   const campaign = mockCampaigns.find((c) => c.id === campaignId);
