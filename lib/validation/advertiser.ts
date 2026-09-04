@@ -59,7 +59,29 @@ export const createCampaignSchema = z.object({
     .min(10, "Длительность не менее 10 секунд"),
 });
 
+export const createStandaloneTaskSchema = z.object({
+  advertiserId: z.string().min(1),
+  title: z.string().min(2, "Название минимум 2 символа").max(200),
+  description: z.string().max(2000).optional().or(z.literal("")),
+  type: z.enum([
+    "video",
+    "banner",
+    "cpc",
+    "survey",
+    "app_install",
+    "subscription",
+  ]),
+  url: z.string().url("Некорректная ссылка на задание"),
+  reward: z
+    .number()
+    .positive("Цена за задание должна быть положительной")
+    .max(100000, "Цена за задание слишком велика"),
+});
+
 export type AdvertiserRegisterInput = z.infer<typeof advertiserRegisterSchema>;
 export type AdvertiserLoginInput = z.infer<typeof advertiserLoginSchema>;
 export type TopUpInput = z.infer<typeof topUpSchema>;
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
+export type CreateStandaloneTaskInput = z.infer<
+  typeof createStandaloneTaskSchema
+>;
