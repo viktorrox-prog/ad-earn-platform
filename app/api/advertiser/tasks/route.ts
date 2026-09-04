@@ -9,9 +9,8 @@ import type {
 } from "@/lib/models";
 import {
   getAdvertiserById,
-  updateAdvertiserBalance,
   getTasksByAdvertiser,
-  createTask,
+  createStandaloneTaskWithBalanceDeduct,
 } from "@/lib/models";
 
 function standaloneTaskMapping(type: CampaignType): {
@@ -118,7 +117,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const updated = await updateAdvertiserBalance(advertiserId, -reward);
+  const mapping = standaloneTaskMapping(type);
+
+  const updated = await createStandaloneTaskWithBalanceDeduct(
+    advertiserId,
+    {
+      title,
+      description: description || `Задание: ${title}`,
+      platform: mapping.platform,
+      actionType: mapping.actionType,
+      taskType: mapping.taskType,
+      url,
+      reward,
+      status: "active",
+    },
+    reward
+  );
   if (!updated) {
     return NextResponse.json(
       { error: "Недостаточно средств на балансе" },
@@ -126,19 +140,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const mapping = standaloneTaskMapping(type);
-
-  const task = await createTask({
-    title,
-    description: description || `Задание: ${title}`,
-    platform: mapping.platform,
-    actionType: mapping.actionType,
-    taskType: mapping.taskType,
-    url,
-    reward,
-    status: "active",
-    advertiserId,
-  });
+  const { task } = updated;
 
   return NextResponse.json({
     task: {
