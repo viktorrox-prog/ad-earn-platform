@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       duration,
       views,
     } = createParsed.data;
-    const costPerView = Math.round(duration * 0.05 * 100) / 100;
+    const costPerView = Math.round(duration * 0.055 * 100) / 100;
     const budget = views * costPerView;
 
     const minViews =
