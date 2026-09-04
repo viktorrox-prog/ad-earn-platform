@@ -184,11 +184,6 @@ export function SiteFooter() {
                 </span>
               </div>
               <div className="flex h-10 items-center gap-2 rounded-lg border border-border/40 bg-card/50 px-4 text-sm font-semibold text-foreground/80 shadow-xs">
-                <span className="text-[10px] font-bold tracking-tight text-[#1A5C38]">
-                  FreeKassa
-                </span>
-              </div>
-              <div className="flex h-10 items-center gap-2 rounded-lg border border-border/40 bg-card/50 px-4 text-sm font-semibold text-foreground/80 shadow-xs">
                 <span className="text-[10px] font-bold tracking-tight text-[#1A1F71]">
                   Visa
                 </span>
