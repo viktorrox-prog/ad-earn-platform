@@ -48,13 +48,15 @@ interface WithdrawalRequest {
 }
 
 const methodLabels: Record<string, string> = {
-  azvox: "Azvox",
+  azvox: "Кошелёк Azvox",
   card: "Банковская карта",
+  sbp: "СБП",
 };
 
 const methodIcons: Record<string, typeof CreditCard> = {
   azvox: Landmark,
   card: CreditCard,
+  sbp: Smartphone,
 };
 
 const statusLabels: Record<string, string> = {
@@ -86,7 +88,7 @@ function FinancePage() {
   const [depositAmount, setDepositAmount] = useState("");
 
   const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawMethod, setWithdrawMethod] = useState<"card" | "sbp">("card");
+  const [withdrawMethod, setWithdrawMethod] = useState<"azvox">("azvox");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
 
@@ -376,38 +378,20 @@ function FinancePage() {
                   <label className="text-sm font-medium">Способ вывода</label>
                   <div className="flex gap-2">
                     <Button
-                      variant={
-                        withdrawMethod === "card" ? "default" : "outline"
-                      }
+                      variant="default"
                       className="flex-1 gap-2"
-                      onClick={() => setWithdrawMethod("card")}
+                      onClick={() => setWithdrawMethod("azvox")}
                     >
-                      <CreditCard className="h-4 w-4" />
-                      Карта
-                    </Button>
-                    <Button
-                      variant={withdrawMethod === "sbp" ? "default" : "outline"}
-                      className="flex-1 gap-2"
-                      onClick={() => setWithdrawMethod("sbp")}
-                    >
-                      <Smartphone className="h-4 w-4" />
-                      СБП
+                      <Landmark className="h-4 w-4" />
+                      Кошелёк Azvox
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    {withdrawMethod === "card"
-                      ? "Номер карты"
-                      : "Номер телефона (СБП)"}
-                  </label>
+                  <label className="text-sm font-medium">Кошелёк Azvox</label>
                   <Input
-                    placeholder={
-                      withdrawMethod === "card"
-                        ? "2200 0000 0000 0000"
-                        : "+7 (999) 000-00-00"
-                    }
+                    placeholder="Укажите свой кошелёк Azvox"
                     value={withdrawRecipient}
                     onChange={(e) => setWithdrawRecipient(e.target.value)}
                   />
