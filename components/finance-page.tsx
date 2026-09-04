@@ -49,14 +49,10 @@ interface WithdrawalRequest {
 
 const methodLabels: Record<string, string> = {
   azvox: "Кошелёк Azvox",
-  card: "Банковская карта",
-  sbp: "СБП",
 };
 
 const methodIcons: Record<string, typeof CreditCard> = {
   azvox: Landmark,
-  card: CreditCard,
-  sbp: Smartphone,
 };
 
 const statusLabels: Record<string, string> = {
