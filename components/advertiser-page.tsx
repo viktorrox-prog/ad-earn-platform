@@ -501,6 +501,30 @@ function TopUpForm({
   );
 }
 
+function getCampaignTypeForPriceItem(item: PriceListItem): Campaign["type"] {
+  const name = item.name.toLowerCase();
+  if (name.includes("подписчик")) return "subscription";
+  if (
+    item.category === "cpc" ||
+    name.includes("переход") ||
+    name.includes("репост")
+  ) {
+    return "cpc";
+  }
+  if (name.includes("коммент")) return "survey";
+  if (name.includes("лайк")) return "banner";
+  return "video";
+}
+
+const TEMPLATE_TARGET_URLS: Record<Campaign["type"], string> = {
+  video: "https://example.com/video.mp4",
+  banner: "https://example.com/banner.jpg",
+  cpc: "https://example.com/landing",
+  survey: "https://example.com/survey",
+  app_install: "https://play.google.com/store/apps/details?id=...",
+  subscription: "https://t.me/channel",
+};
+
 function CreateCampaignForm({
   advertiserId,
   onSuccess,
@@ -585,6 +609,34 @@ function CreateCampaignForm({
       label: "Подписка",
     },
   ];
+
+  const handleSelectTemplate = (item: PriceListItem) => {
+    const templateType = getCampaignTypeForPriceItem(item);
+    const templateDuration = 10;
+    const templateViews = Math.max(
+      MIN_VIEWS_BY_CAMPAIGN_TYPE[templateType],
+      Math.round(item.price / (templateDuration * 0.055))
+    );
+
+    setTitle(item.name);
+    setDescription(item.description);
+    setType(templateType);
+    setDuration(String(templateDuration));
+    setViews(String(templateViews));
+    setTaskDescription(item.description);
+
+    const isMediaTemplate =
+      templateType === "video" || templateType === "banner";
+    if (isMediaTemplate) {
+      setMediaUrl(TEMPLATE_TARGET_URLS[templateType]);
+      setTargetUrl("");
+    } else {
+      setTargetUrl(TEMPLATE_TARGET_URLS[templateType]);
+      setMediaUrl("");
+    }
+
+    toast.success("Шаблон применён — поля автозаполнены");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -690,7 +742,7 @@ function CreateCampaignForm({
                   key={item.id}
                   type="button"
                   onClick={() => {
-                    setTitle(item.name);
+                    handleSelectTemplate(item);
                   }}
                   className={`flex flex-col items-start gap-1 p-3 rounded-lg border transition-colors text-left ${
                     isSelected
