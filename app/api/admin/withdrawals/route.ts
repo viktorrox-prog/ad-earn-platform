@@ -5,6 +5,7 @@ import {
   getAllWithdrawalRequests,
   getUserById,
   updateWithdrawalRequestStatus,
+  type WithdrawalRequest,
 } from "@/lib/models";
 import { mockUsers, mockWithdrawalRequests } from "@/lib/mock-data";
 import { addWorkingDays } from "@/lib/utils";
@@ -15,6 +16,21 @@ const actionSchema = z.object({
 });
 
 const WITHDRAWAL_WORKING_DAYS = 3;
+
+const SUPPORTED_METHODS = new Set(["azvox"]);
+
+function isBrokenWithdrawalRequest(r: WithdrawalRequest): boolean {
+  const amount = Number(r.amount);
+  const recipient = (r.recipient ?? "").trim();
+  const method = (r.method ?? "").trim();
+  return (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    recipient.length === 0 ||
+    !SUPPORTED_METHODS.has(method) ||
+    (r.status ?? "") === "rejected"
+  );
+}
 
 export async function GET() {
   const dbAvailable = await isDatabaseAvailable();
@@ -48,6 +64,8 @@ export async function GET() {
       console.warn("Failed to load withdrawal requests from DB", err);
     }
   }
+
+  requests = requests.filter((r) => !isBrokenWithdrawalRequest(r));
 
   const nowIso = new Date().toISOString().split("T")[0];
   const enriched = await Promise.all(
