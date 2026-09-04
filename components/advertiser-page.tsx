@@ -550,21 +550,11 @@ function CreateCampaignForm({
     });
   }, [type, minViewsForType]);
 
-  useEffect(() => {
-    setViews((prev) => {
-      const num = Number(prev);
-      if (!prev || num < minViewsForType) {
-        return String(minViewsForType);
-      }
-      return prev;
-    });
-  }, [type, minViewsForType]);
-
   const isMediaType = type === "video" || type === "banner";
 
   const computedBudget =
     Number(views) > 0 && Number(duration) > 0
-      ? Math.round(Number(views) * Number(duration) * 0.05 * 100) / 100
+      ? Math.round(Number(views) * Number(duration) * 0.055 * 100) / 100
       : 0;
 
   const typeOptions: {
@@ -825,7 +815,7 @@ function CreateCampaignForm({
             required
           />
           <p className="text-xs text-muted-foreground">
-            Цена за просмотр: {(Number(duration) * 0.05).toFixed(2)} ₽ (0.05
+            Цена за просмотр: {(Number(duration) * 0.055).toFixed(2)} ₽ (0.055
             ₽/сек)
           </p>
         </div>
@@ -839,7 +829,7 @@ function CreateCampaignForm({
           {computedBudget.toLocaleString()} ₽
         </p>
         <p className="text-xs text-muted-foreground">
-          {views || "0"} просмотров × {(Number(duration) * 0.05).toFixed(2)} ₽
+          {views || "0"} просмотров × {(Number(duration) * 0.055).toFixed(2)} ₽
         </p>
       </div>
 
