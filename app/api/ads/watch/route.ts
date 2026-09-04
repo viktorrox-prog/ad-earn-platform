@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (dbAvailable) {
-    const reward = Math.round(ad.duration * 0.0035 * 100) / 100;
+    const reward = Math.round(ad.duration * 0.00385 * 100) / 100;
 
     await createAdView({
       userId,
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const reward = Math.round(ad.duration * 0.0035 * 100) / 100;
+  const reward = Math.round(ad.duration * 0.00385 * 100) / 100;
 
   return NextResponse.json({
     success: true,
