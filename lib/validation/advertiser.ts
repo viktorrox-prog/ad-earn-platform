@@ -12,6 +12,7 @@ export const advertiserRegisterSchema = z.object({
     .regex(/^\+?\d{10,15}$/, "Некорректный номер телефона"),
   password: z.string().min(6, "Пароль минимум 6 символов").max(100),
   refCode: z.string().optional(),
+  clickId: z.string().optional(),
 });
 
 export const advertiserLoginSchema = z.object({
@@ -22,7 +23,7 @@ export const advertiserLoginSchema = z.object({
 export const topUpSchema = z.object({
   advertiserId: z.string().min(1),
   amount: z.number().positive("Сумма должна быть положительной"),
-  method: z.enum(["robokassa", "yoomoney"]),
+  method: z.enum(["azvox"]),
 });
 
 export const createCampaignSchema = z.object({
@@ -62,3 +63,4 @@ export type AdvertiserRegisterInput = z.infer<typeof advertiserRegisterSchema>;
 export type AdvertiserLoginInput = z.infer<typeof advertiserLoginSchema>;
 export type TopUpInput = z.infer<typeof topUpSchema>;
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
+
