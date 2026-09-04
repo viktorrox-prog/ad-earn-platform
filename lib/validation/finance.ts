@@ -12,7 +12,7 @@ export const withdrawSchema = z.object({
     .number()
     .positive("Сумма должна быть положительной")
     .min(100, "Минимальная сумма вывода — 100 ₽"),
-  method: z.enum(["card", "sbp"]),
+  method: z.enum(["azvox"]),
   recipient: z.string().min(1, "Укажите реквизиты для вывода"),
 });
 
