@@ -584,6 +584,16 @@ function CreateCampaignForm({
     });
   }, [type, minViewsForType]);
 
+  useEffect(() => {
+    setViews((prev) => {
+      const num = Number(prev);
+      if (!prev || num < minViewsForType) {
+        return String(minViewsForType);
+      }
+      return prev;
+    });
+  }, [type, minViewsForType]);
+
   const isMediaType = type === "video" || type === "banner";
 
   const computedBudget =
@@ -1667,7 +1677,7 @@ export function AdvertiserPage() {
             <Tabs
               value={dashboardTab}
               onValueChange={(v) =>
-                setDashboardTab(v as "campaigns" | "reviews" | "tasks")
+                setDashboardTab(v as "campaigns" | "reviews")
               }
             >
               <div className="flex items-center justify-between">
