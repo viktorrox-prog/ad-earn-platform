@@ -14,7 +14,7 @@ const watchSchema = z.object({
   adId: z.string().min(1),
 });
 
-const DAILY_LIMIT = 20;
+const DAILY_LIMIT = 50;
 
 export async function POST(request: NextRequest) {
   const parsed = watchSchema.safeParse(await request.json());
