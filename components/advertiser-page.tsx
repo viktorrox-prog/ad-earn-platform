@@ -22,7 +22,6 @@ import {
   ExternalLink,
   FileText,
   Landmark,
-  CreditCard,
   Tag,
   CheckCheck,
   Timer,
@@ -409,7 +408,6 @@ function TopUpForm({
   onBack: () => void;
 }) {
   const [amount, setAmount] = useState("1000");
-  const [method, setMethod] = useState<"azvox" | "freekassa">("azvox");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -419,10 +417,7 @@ function TopUpForm({
       return;
     }
 
-    const endpoint =
-      method === "azvox"
-        ? "/api/payment/azvox/init"
-        : "/api/payment/freekassa/init";
+    const endpoint = "/api/payment/azvox/init";
 
     try {
       const res = await fetch(endpoint, {
@@ -478,37 +473,14 @@ function TopUpForm({
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Метод оплаты</label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setMethod("azvox")}
-            className={`flex w-full flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-              method === "azvox"
-                ? "border-primary bg-primary/10"
-                : "border-border/50 hover:border-primary/50"
-            }`}
-          >
+        <div className="grid grid-cols-1 gap-2">
+          <div className="flex w-full flex-col items-center gap-2 p-4 rounded-xl border border-primary bg-primary/10">
             <Landmark className="h-6 w-6" />
             <span className="text-sm font-medium">Azvox</span>
             <span className="text-xs text-muted-foreground">
               Платёжный сервис
             </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMethod("freekassa")}
-            className={`flex w-full flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-              method === "freekassa"
-                ? "border-primary bg-primary/10"
-                : "border-border/50 hover:border-primary/50"
-            }`}
-          >
-            <CreditCard className="h-6 w-6" />
-            <span className="text-sm font-medium">FreeKassa</span>
-            <span className="text-xs text-muted-foreground">
-              Платёжный сервис
-            </span>
-          </button>
+          </div>
         </div>
       </div>
 
