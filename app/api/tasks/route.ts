@@ -8,8 +8,6 @@ import {
   getUserTaskCompletions,
   createTaskCompletion,
   createTaskReview,
-  createTransaction,
-  incrementCampaignCompletions,
 } from "@/lib/models";
 import { mockTasks } from "@/lib/mock-data";
 
@@ -87,6 +85,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const campaignId = task.campaignId;
+  let advertiserId = task.advertiserId;
+
+  if (!advertiserId && campaignId) {
+    const campaign = await getCampaignById(campaignId);
+    if (campaign) {
+      advertiserId = campaign.advertiserId;
+    }
+  }
+
+  if (!advertiserId) {
+    return NextResponse.json(
+      {
+        error:
+          "Не удалось определить рекламодателя задания. Проверка невозможна.",
+      },
+      { status: 400 }
+    );
+  }
+
   const completions = await getUserTaskCompletions(userId);
   const alreadyDone = completions.some((c) => c.taskId === taskId);
 
@@ -104,20 +122,10 @@ export async function POST(request: NextRequest) {
     completedAt: new Date().toISOString(),
   });
 
-  const campaignId = task.campaignId;
-  let advertiserId: string | undefined;
-
-  if (campaignId) {
-    const campaign = await getCampaignById(campaignId);
-    if (campaign) {
-      advertiserId = campaign.advertiserId;
-    }
-  }
-
   const review = await createTaskReview({
     taskId,
     userId,
-    advertiserId: advertiserId ?? "unknown",
+    advertiserId,
     campaignId,
     reward: task.reward,
     status: "pending",
