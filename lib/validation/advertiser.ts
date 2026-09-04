@@ -63,4 +63,3 @@ export type AdvertiserRegisterInput = z.infer<typeof advertiserRegisterSchema>;
 export type AdvertiserLoginInput = z.infer<typeof advertiserLoginSchema>;
 export type TopUpInput = z.infer<typeof topUpSchema>;
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
-
