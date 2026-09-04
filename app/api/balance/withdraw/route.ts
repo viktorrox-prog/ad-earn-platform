@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withdrawSchema } from "@/lib/validation/finance";
 import { isDatabaseAvailable } from "@/lib/db";
 import {
-  createWithdrawalRequest,
+  createWithdrawalRequestWithReservation,
   getWithdrawalRequestsByUserId,
   getTransactionsByUserId,
 } from "@/lib/models";
@@ -43,7 +43,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (dbAvailable) {
-    await createWithdrawalRequest({
+    // Создаём заявку и сразу резервируем сумму одной транзакцией DynamoDB:
+    // отрицательная транзакция вывода уменьшает баланс, исключая «перевывод».
+    await createWithdrawalRequestWithReservation({
       userId,
       amount,
       method,
