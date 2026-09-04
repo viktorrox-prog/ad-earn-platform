@@ -3,7 +3,6 @@ import { isDatabaseAvailable } from "@/lib/db";
 import {
   createPayment,
   createTransaction,
-  creditReferralReward,
   getAdvertiserById,
   getPaymentById,
   updateAdvertiserBalance,
@@ -124,17 +123,6 @@ export async function processPaymentCallback(
         } else {
           console.info(
             `[payment:${method}] платёж ${paymentId}: баланс рекламодателя ${payment.advertiserId} увеличен на ${amount}, итог ${updated.balance}`
-          );
-        }
-
-        if (advertiser.referredBy) {
-          await creditReferralReward(
-            advertiser.referredBy,
-            amount,
-            advertiser.companyName
-          );
-          console.info(
-            `[payment:${method}] платёж ${paymentId}: начислена партнёрская комиссия referrer=${advertiser.referredBy}`
           );
         }
       }
