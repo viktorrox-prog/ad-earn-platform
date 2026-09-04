@@ -4,6 +4,8 @@ import { isDatabaseAvailable } from "@/lib/db";
 import {
   getAllWithdrawalRequests,
   getUserById,
+  getWithdrawalRequestById,
+  refundWithdrawalFunds,
   updateWithdrawalRequestStatus,
   type WithdrawalRequest,
 } from "@/lib/models";
@@ -112,7 +114,23 @@ export async function POST(request: NextRequest) {
 
   if (dbAvailable) {
     try {
-      await updateWithdrawalRequestStatus(withdrawalId, status);
+      // Заявку можно обработать только из статуса pending. Если она уже
+      // обработана (условное обновление вернуло null), повторная обработка
+      // отклоняется — это исключает двойное списание или двойной возврат.
+      const existing = await getWithdrawalRequestById(withdrawalId);
+      const updated = await updateWithdrawalRequestStatus(withdrawalId, status);
+
+      if (!updated) {
+        return NextResponse.json(
+          { error: "Заявка уже обработана" },
+          { status: 400 }
+        );
+      }
+
+      // Средства резервируются при создании заявки; при отклонении — возвращаем.
+      if (action === "reject" && existing) {
+        await refundWithdrawalFunds(existing.userId, Number(existing.amount));
+      }
     } catch (err) {
       console.warn("Failed to update withdrawal status in DB", err);
     }
