@@ -6,6 +6,7 @@ import {
   QueryCommand,
   ScanCommand,
   UpdateCommand,
+  TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { TableName, IndexName } from "./schema";
 
@@ -111,6 +112,7 @@ export interface Task {
   reward: number;
   status: TaskStatus;
   campaignId?: string;
+  advertiserId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -186,7 +188,7 @@ export interface Campaign {
 }
 
 export type WithdrawalRequestStatus = "pending" | "approved" | "rejected";
-export type WithdrawalMethod = "card" | "sbp";
+export type WithdrawalMethod = "card" | "sbp" | "azvox";
 
 export interface WithdrawalRequest {
   id: string;
@@ -575,6 +577,13 @@ export async function getActiveTasksByType(taskType: string): Promise<Task[]> {
   return all.filter((t) => t.taskType === taskType);
 }
 
+export async function getTasksByAdvertiser(
+  advertiserId: string
+): Promise<Task[]> {
+  const all = await getActiveTasks();
+  return all.filter((t) => t.advertiserId === advertiserId);
+}
+
 export async function getTaskById(id: string): Promise<Task | null> {
   const result = await docClient.send(
     new GetCommand({
@@ -605,6 +614,77 @@ export async function createTask(
   );
 
   return task;
+}
+
+/**
+ * Атомарное создание задания рекламодателя со списанием цены с баланса.
+ *
+ * Задание и списание выполняются одной транзакцией DynamoDB (TransactWriteItems):
+ * либо создаётся задание И списываются средства, либо не происходит ничего.
+ * Это исключает потерю средств, когда задание падает после списания (баланс в
+ * минус без созданного задания), а также двойное/повторное списание.
+ *
+ * Условие `#balance >= :reward` не даёт балансу уйти ниже нуля. При
+ * TransactionCanceledException (недостаточно средств) возвращается null, и ни
+ * одно изменение не применяется.
+ *
+ * Возвращает созданное задание и актуальный остаток на балансе после списания.
+ */
+export async function createStandaloneTaskWithBalanceDeduct(
+  advertiserId: string,
+  data: Omit<Task, "id" | "createdAt" | "updatedAt" | "advertiserId">,
+  reward: number
+): Promise<{ task: Task; balance: number } | null> {
+  const { randomUUID } = await import("crypto");
+  const now = new Date().toISOString();
+  const task: Task = {
+    ...data,
+    advertiserId,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await docClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: TableName.ADVERTISERS,
+              Key: { id: advertiserId },
+              UpdateExpression:
+                "ADD #balance :delta SET updatedAt = :updatedAt",
+              ConditionExpression: "#balance >= :reward",
+              ExpressionAttributeNames: { "#balance": "balance" },
+              ExpressionAttributeValues: {
+                ":delta": -reward,
+                ":reward": reward,
+                ":updatedAt": now,
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: TableName.TASKS,
+              Item: task,
+            },
+          },
+        ],
+      })
+    );
+  } catch (err) {
+    if ((err as { name?: string }).name === "TransactionCanceledException") {
+      console.warn(
+        `[task] ${advertiserId}: недостаточно средств для создания задания (${reward})`
+      );
+      return null;
+    }
+    throw err;
+  }
+
+  const advertiser = await getAdvertiserById(advertiserId);
+  return { task, balance: advertiser?.balance ?? 0 };
 }
 
 export async function createTaskCompletion(
@@ -784,9 +864,56 @@ export async function createAdvertiser(
   return advertiser;
 }
 
+/**
+ * Атомарное изменение баланса рекламодателя на дельту.
+ *
+ * Баланс изменяется через DynamoDB `ADD`, а не через «прочитать → посчитать
+ * новое значение → записать целиком». Прежняя реализация передавала абсолютное
+ * значение, из-за чего при одновременных операциях (пополнение + списание за
+ * кампанию, два параллельных пополнения) последняя запись перетирала остальные
+ * и пополнение «пропадало», а баланс мог уйти в минус.
+ *
+ * Условие `#balance >= :needed` не даёт балансу уйти ниже нуля: для положительной
+ * дельты `needed = 0`, для отрицательной — нужная величина, поэтому списание
+ * сверх остатка отклоняется.
+ *
+ * Возвращает обновлённого рекламодателя или null, если рекламодатель не найден
+ * либо на балансе недостаточно средств (ConditionalCheckFailedException).
+ */
 export async function updateAdvertiserBalance(
   id: string,
-  newBalance: number
+  delta: number
+): Promise<Advertiser | null> {
+  try {
+    const result = await docClient.send(
+      new UpdateCommand({
+        TableName: TableName.ADVERTISERS,
+        Key: { id },
+        UpdateExpression: "ADD #balance :delta SET updatedAt = :updatedAt",
+        ConditionExpression: "#balance >= :needed",
+        ExpressionAttributeNames: { "#balance": "balance" },
+        ExpressionAttributeValues: {
+          ":delta": delta,
+          ":needed": Math.max(0, -delta),
+          ":updatedAt": new Date().toISOString(),
+        },
+        ReturnValues: "ALL_NEW",
+      })
+    );
+    return (result.Attributes as Advertiser) ?? null;
+  } catch (err) {
+    if ((err as { name?: string }).name === "ConditionalCheckFailedException") {
+      console.warn(`[balance] ${id}: недостаточно средств для дельты ${delta}`);
+      return null;
+    }
+    throw err;
+  }
+}
+
+/** Безусловная установка абсолютного значения баланса (для админ-сброса). */
+export async function setAdvertiserBalance(
+  id: string,
+  value: number
 ): Promise<Advertiser | null> {
   const result = await docClient.send(
     new UpdateCommand({
@@ -795,7 +922,7 @@ export async function updateAdvertiserBalance(
       UpdateExpression: "set #balance = :balance, updatedAt = :updatedAt",
       ExpressionAttributeNames: { "#balance": "balance" },
       ExpressionAttributeValues: {
-        ":balance": newBalance,
+        ":balance": value,
         ":updatedAt": new Date().toISOString(),
       },
       ReturnValues: "ALL_NEW",
@@ -1000,6 +1127,76 @@ export async function createWithdrawalRequest(
   return request;
 }
 
+/**
+ * Атомарное создание заявки на вывод с одновременным резервированием средств.
+ *
+ * Заявка на вывод и транзакция списания (отрицательная, тип "withdrawal")
+ * записываются одной транзакцией DynamoDB (TransactWriteItems), поэтому либо
+ * создаются обе, либо не создаётся ни одна. Баланс пользователя вычисляется из
+ * суммы транзакций, поэтому отрицательная транзакция сразу уменьшает доступный
+ * баланс — средства «резервируются» на время модерации заявки.
+ *
+ * Это предотвращает «перевывод»: последующие заявки видят уже уменьшенный
+ * баланс. При отклонении заявки админом зарезервированные средства возвращаются
+ * через refundWithdrawalFunds.
+ */
+export async function createWithdrawalRequestWithReservation(
+  data: Omit<WithdrawalRequest, "id" | "createdAt" | "status">
+): Promise<WithdrawalRequest> {
+  const { randomUUID } = await import("crypto");
+  const now = new Date().toISOString();
+  const request: WithdrawalRequest = {
+    ...data,
+    id: randomUUID(),
+    status: "pending",
+    createdAt: now,
+  };
+  const reservation: Transaction = {
+    id: randomUUID(),
+    userId: data.userId,
+    type: "withdrawal",
+    amount: -data.amount,
+    description: "Вывод средств — средства зарезервированы",
+    status: "completed",
+    createdAt: now,
+  };
+
+  await docClient.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: TableName.WITHDRAWAL_REQUESTS,
+            Item: request,
+          },
+        },
+        {
+          Put: {
+            TableName: TableName.TRANSACTIONS,
+            Item: reservation,
+          },
+        },
+      ],
+    })
+  );
+
+  return request;
+}
+
+/** Возврат зарезервированных средств при отклонении заявки на вывод. */
+export async function refundWithdrawalFunds(
+  userId: string,
+  amount: number
+): Promise<Transaction> {
+  return createTransaction({
+    userId,
+    type: "withdrawal",
+    amount,
+    description: "Возврат зарезервированных средств по заявке на вывод",
+    status: "completed",
+  });
+}
+
 export async function getAllUsers(): Promise<User[]> {
   const result = await docClient.send(
     new ScanCommand({
@@ -1082,21 +1279,54 @@ export async function getAllWithdrawalRequests(): Promise<WithdrawalRequest[]> {
   return (result.Items as WithdrawalRequest[]) ?? [];
 }
 
+export async function getWithdrawalRequestById(
+  id: string
+): Promise<WithdrawalRequest | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: TableName.WITHDRAWAL_REQUESTS,
+      Key: { id },
+    })
+  );
+  return (result.Item as WithdrawalRequest) ?? null;
+}
+
+/**
+ * Обновление статуса заявки на вывод.
+ *
+ * Статус можно сменить только с "pending" (ConditionExpression): если заявка уже
+ * обработана (approved/rejected), повторный вызов вернёт null. Это защищает от
+ * двойной обработки одной заявки админом (двойного списания/возврата средств).
+ */
 export async function updateWithdrawalRequestStatus(
   id: string,
   status: WithdrawalRequestStatus
 ): Promise<WithdrawalRequest | null> {
-  const result = await docClient.send(
-    new UpdateCommand({
-      TableName: TableName.WITHDRAWAL_REQUESTS,
-      Key: { id },
-      UpdateExpression: "set #status = :status",
-      ExpressionAttributeNames: { "#status": "status" },
-      ExpressionAttributeValues: { ":status": status },
-      ReturnValues: "ALL_NEW",
-    })
-  );
-  return (result.Attributes as WithdrawalRequest) ?? null;
+  try {
+    const result = await docClient.send(
+      new UpdateCommand({
+        TableName: TableName.WITHDRAWAL_REQUESTS,
+        Key: { id },
+        UpdateExpression: "set #status = :status",
+        ConditionExpression: "#status = :pending",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":status": status,
+          ":pending": "pending",
+        },
+        ReturnValues: "ALL_NEW",
+      })
+    );
+    return (result.Attributes as WithdrawalRequest) ?? null;
+  } catch (err) {
+    if ((err as { name?: string }).name === "ConditionalCheckFailedException") {
+      console.warn(
+        `[withdrawal] ${id}: заявка уже обработана, статус не изменён на ${status}`
+      );
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function getAllTransactions(): Promise<Transaction[]> {
@@ -1156,7 +1386,7 @@ export async function resetTestBalances(): Promise<{
   let advertisersReset = 0;
   for (const advertiser of advertisers) {
     if (advertiser.balance > 0) {
-      await updateAdvertiserBalance(advertiser.id, 0);
+      await setAdvertiserBalance(advertiser.id, 0);
       advertisersReset += 1;
     }
   }
