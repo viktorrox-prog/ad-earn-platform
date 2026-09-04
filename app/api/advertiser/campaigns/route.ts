@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     duration,
   } = parsed.data;
 
-  const costPerView = Math.round(duration * 0.05 * 100) / 100;
+  const costPerView = Math.round(duration * 0.055 * 100) / 100;
   const budget = views * costPerView;
 
   let settings = mockAdminSettings;
@@ -151,6 +151,17 @@ export async function POST(request: NextRequest) {
   const newBalance = advertiser.balance - budget;
 
   if (dbAvailable) {
+    // Сначала атомарно списываем бюджет: условие внутри updateAdvertiserBalance
+    // не даёт балансу уйти ниже нуля при конкурентных списаниях.
+    const updated = await updateAdvertiserBalance(advertiserId, -budget);
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Недостаточно средств на балансе" },
+        { status: 400 }
+      );
+    }
+    const deductedBalance = updated.balance;
+
     const campaign = await createCampaign({
       advertiserId,
       title,
@@ -164,8 +175,6 @@ export async function POST(request: NextRequest) {
       costPerView,
       status: "active",
     });
-
-    await updateAdvertiserBalance(advertiserId, newBalance);
 
     if (advertiser.referredBy) {
       await creditReferralReward(
@@ -192,7 +201,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ...campaign,
-      remainingBalance: newBalance,
+      remainingBalance: deductedBalance,
     });
   }
 
