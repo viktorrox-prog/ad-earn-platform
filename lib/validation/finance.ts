@@ -3,7 +3,7 @@ import { z } from "zod";
 export const depositSchema = z.object({
   userId: z.string().min(1),
   amount: z.number().positive("Сумма должна быть положительной"),
-  method: z.enum(["azvox", "freekassa"]),
+  method: z.enum(["azvox"]),
 });
 
 export const withdrawSchema = z.object({
@@ -18,3 +18,4 @@ export const withdrawSchema = z.object({
 
 export type DepositInput = z.infer<typeof depositSchema>;
 export type WithdrawInput = z.infer<typeof withdrawSchema>;
+
