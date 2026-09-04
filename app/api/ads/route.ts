@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   }
 
   const todayViews = await getTodayAdViewsCount(userId);
-  const DAILY_LIMIT = 20;
+  const DAILY_LIMIT = 50;
   const viewsRemaining = Math.max(0, DAILY_LIMIT - todayViews);
 
   return NextResponse.json({
