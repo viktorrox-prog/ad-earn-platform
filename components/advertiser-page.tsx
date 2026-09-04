@@ -27,6 +27,7 @@ import {
   Timer,
   Hourglass,
   CopyCheck,
+  ListChecks,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -56,6 +57,7 @@ type PageMode =
   | "dashboard"
   | "topup"
   | "create_campaign"
+  | "create_task"
   | "task_reviews";
 
 const statusColors: Record<string, string> = {
@@ -274,6 +276,14 @@ const campaignTypeConfig: Record<
     icon: <Users className="h-5 w-5 text-primary" />,
     label: "Подписка",
   },
+};
+
+const taskTypeLabels: Record<string, string> = {
+  social: "Соцсети",
+  subscription: "Подписка",
+  cpc: "CPC",
+  app_install: "Установка",
+  survey: "Опрос",
 };
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
@@ -902,6 +912,216 @@ function CreateCampaignForm({
   );
 }
 
+function CreateTaskForm({
+  advertiserId,
+  balance,
+  onSuccess,
+  onBack,
+}: {
+  advertiserId: string;
+  balance: number;
+  onSuccess: () => void;
+  onBack: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [type, setType] = useState<Campaign["type"]>("video");
+  const [url, setUrl] = useState("");
+  const [reward, setReward] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const typeOptions: {
+    value: Campaign["type"];
+    icon: React.ReactNode;
+    label: string;
+  }[] = [
+    { value: "video", icon: <Play className="h-5 w-5" />, label: "Видео" },
+    { value: "banner", icon: <Image className="h-5 w-5" />, label: "Баннер" },
+    {
+      value: "cpc",
+      icon: <MousePointerClick className="h-5 w-5" />,
+      label: "CPC",
+    },
+    {
+      value: "subscription",
+      icon: <Users className="h-5 w-5" />,
+      label: "Подписка",
+    },
+    {
+      value: "app_install",
+      icon: <Smartphone className="h-5 w-5" />,
+      label: "Установка",
+    },
+    {
+      value: "survey",
+      icon: <ClipboardList className="h-5 w-5" />,
+      label: "Опрос",
+    },
+  ];
+
+  const urlPlaceholder: Record<Campaign["type"], string> = {
+    video: "https://example.com/video.mp4",
+    banner: "https://example.com/banner.jpg",
+    cpc: "https://example.com/landing",
+    survey: "https://example.com/survey",
+    app_install: "https://play.google.com/store/apps/details?id=...",
+    subscription: "https://t.me/channel",
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const numericReward = Number(reward);
+    if (!numericReward || numericReward <= 0) {
+      toast.error("Укажите цену за задание");
+      return;
+    }
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/advertiser/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          advertiserId,
+          title,
+          description: description || undefined,
+          type,
+          url,
+          reward: numericReward,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        toast.error(json.error || "Ошибка создания задания");
+        return;
+      }
+
+      const stored = localStorage.getItem("adearn_advertiser");
+      if (stored && json.remainingBalance !== undefined) {
+        const data = JSON.parse(stored);
+        data.balance = json.remainingBalance;
+        localStorage.setItem("adearn_advertiser", JSON.stringify(data));
+      }
+
+      onSuccess();
+      toast.success("Задание создано и опубликовано");
+    } catch {
+      toast.error("Ошибка сети");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Название задания</label>
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Просмотр видео на YouTube"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Описание задания</label>
+        <Input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Опишите, что нужно сделать пользователю (необязательно)"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Тип задания</label>
+        <div className="grid grid-cols-3 gap-2">
+          {typeOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setType(opt.value)}
+              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-colors text-xs ${
+                type === opt.value
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border/50 text-muted-foreground hover:border-primary/50"
+              }`}
+            >
+              {opt.icon}
+              <span className="font-medium">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">
+          {type === "video"
+            ? "Ссылка на видео"
+            : type === "banner"
+              ? "Ссылка на картинку баннера"
+              : type === "cpc"
+                ? "Ссылка для перехода"
+                : type === "subscription"
+                  ? "Ссылка на канал"
+                  : type === "app_install"
+                    ? "Ссылка на приложение"
+                    : "Ссылка на опрос/анкету"}
+        </label>
+        <Input
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder={urlPlaceholder[type]}
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Цена за задание (₽)</label>
+        <Input
+          type="number"
+          value={reward}
+          onChange={(e) => setReward(e.target.value)}
+          min={1}
+          step={0.01}
+          placeholder="5.00"
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Сумма будет списана с вашего баланса и начислена пользователю после
+          подтверждения выполнения
+        </p>
+        {reward && Number(reward) > 0 && balance < Number(reward) && (
+          <p className="text-xs text-red-400">
+            Недостаточно средств: доступно {balance.toFixed(2)} ₽
+          </p>
+        )}
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onBack}
+          className="flex-1"
+        >
+          Отмена
+        </Button>
+        <Button
+          type="submit"
+          className="flex-1 gap-2"
+          disabled={loading || (reward !== "" && Number(reward) > balance)}
+        >
+          {loading ? "Создание..." : "Создать задание"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 interface ReviewItem {
   id: string;
   taskId: string;
@@ -1112,9 +1332,22 @@ export function AdvertiserPage() {
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [refCode, setRefCode] = useState<string | undefined>(undefined);
   const [clickId, setClickId] = useState<string | undefined>(undefined);
-  const [dashboardTab, setDashboardTab] = useState<"campaigns" | "reviews">(
-    "campaigns"
-  );
+  const [dashboardTab, setDashboardTab] = useState<
+    "campaigns" | "reviews" | "tasks"
+  >("campaigns");
+  const [tasks, setTasks] = useState<
+    {
+      id: string;
+      title: string;
+      description: string;
+      type: string;
+      url: string;
+      reward: number;
+      status: string;
+      createdAt: string;
+    }[]
+  >([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("adearn_advertiser");
@@ -1164,6 +1397,28 @@ export function AdvertiserPage() {
     }
   }, [advertiser, fetchCampaigns]);
 
+  const fetchTasks = useCallback(async () => {
+    if (!advertiser) return;
+    setLoadingTasks(true);
+    try {
+      const res = await fetch(
+        `/api/advertiser/tasks?advertiserId=${advertiser.id}`
+      );
+      const json = await res.json();
+      setTasks(json.tasks ?? []);
+    } catch {
+      toast.error("Не удалось загрузить задания");
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [advertiser]);
+
+  useEffect(() => {
+    if (advertiser && dashboardTab === "tasks") {
+      fetchTasks();
+    }
+  }, [advertiser, dashboardTab, fetchTasks]);
+
   const handleAuthSuccess = (data: AdvertiserData) => {
     setAdvertiser(data);
     setMode("dashboard");
@@ -1180,6 +1435,18 @@ export function AdvertiserPage() {
   const handleCampaignCreated = () => {
     fetchCampaigns();
     setMode("dashboard");
+  };
+
+  const handleTaskCreated = () => {
+    fetchTasks();
+    if (advertiser) {
+      const stored = localStorage.getItem("adearn_advertiser");
+      if (stored) {
+        setAdvertiser(JSON.parse(stored));
+      }
+    }
+    setMode("dashboard");
+    setDashboardTab("tasks");
   };
 
   if (!advertiser) {
@@ -1315,6 +1582,25 @@ export function AdvertiserPage() {
           </Card>
         )}
 
+        {mode === "create_task" && (
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ListChecks className="h-4 w-4" />
+                Новое задание
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CreateTaskForm
+                advertiserId={advertiser.id}
+                balance={advertiser.balance}
+                onSuccess={handleTaskCreated}
+                onBack={() => setMode("dashboard")}
+              />
+            </CardContent>
+          </Card>
+        )}
+
         {mode === "dashboard" && (
           <>
             <div className="grid gap-4 sm:grid-cols-4">
@@ -1381,7 +1667,7 @@ export function AdvertiserPage() {
             <Tabs
               value={dashboardTab}
               onValueChange={(v) =>
-                setDashboardTab(v as "campaigns" | "reviews")
+                setDashboardTab(v as "campaigns" | "reviews" | "tasks")
               }
             >
               <div className="flex items-center justify-between">
@@ -1389,6 +1675,10 @@ export function AdvertiserPage() {
                   <TabsTrigger value="campaigns" className="gap-2">
                     <Eye className="h-4 w-4" />
                     Кампании
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks" className="gap-2">
+                    <ListChecks className="h-4 w-4" />
+                    Задания
                   </TabsTrigger>
                   <TabsTrigger value="reviews" className="gap-2">
                     <CopyCheck className="h-4 w-4" />
@@ -1404,6 +1694,17 @@ export function AdvertiserPage() {
                   >
                     <Plus className="h-4 w-4" />
                     Создать кампанию
+                  </Button>
+                )}
+                {dashboardTab === "tasks" && (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => setMode("create_task")}
+                    disabled={advertiser.balance <= 0}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Создать задание
                   </Button>
                 )}
               </div>
@@ -1457,6 +1758,88 @@ export function AdvertiserPage() {
                           >
                             <Plus className="h-4 w-4" />
                             Создать первую кампанию
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            onClick={() => setMode("topup")}
+                            className="gap-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Пополнить баланс
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="tasks" className="mt-4">
+                {loadingTasks ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 2 }).map((_, i) => (
+                      <Card key={i}>
+                        <CardContent className="p-5 space-y-3">
+                          <Skeleton className="h-4 w-48" />
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-4 w-16" />
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : tasks.length > 0 ? (
+                  <div className="space-y-3">
+                    {tasks.map((task) => (
+                      <Card key={task.id} className="border-border/50">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-medium text-sm">
+                                  {task.title}
+                                </p>
+                                <Badge variant="outline" className="text-xs">
+                                  {taskTypeLabels[task.type] ?? task.type}
+                                </Badge>
+                              </div>
+                              {task.description && (
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {task.description}
+                                </p>
+                              )}
+                              {task.url && (
+                                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 truncate">
+                                  <ExternalLink className="h-3 w-3 shrink-0" />
+                                  {task.url}
+                                </p>
+                              )}
+                              <p className="text-xs text-green-400 font-medium mt-1">
+                                +{task.reward.toFixed(2)} ₽ за задание
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                          <ListChecks className="h-7 w-7 text-muted-foreground" />
+                        </div>
+                        <p className="text-muted-foreground">
+                          У вас пока нет отдельных заданий
+                        </p>
+                        {advertiser.balance > 0 ? (
+                          <Button
+                            onClick={() => setMode("create_task")}
+                            className="gap-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Создать первое задание
                           </Button>
                         ) : (
                           <Button
