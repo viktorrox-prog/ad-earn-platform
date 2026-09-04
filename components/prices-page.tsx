@@ -11,6 +11,7 @@ import {
   Video,
   Send,
   Camera,
+  MousePointerClick,
 } from "lucide-react";
 import type { PriceListItem } from "@/lib/models";
 
@@ -27,6 +28,12 @@ const categoryConfig: Record<
   vk: { label: "VK", icon: Users, color: "text-blue-500" },
   instagram: { label: "Instagram", icon: Camera, color: "text-pink-500" },
   tiktok: { label: "TikTok", icon: Music, color: "text-rose-400" },
+  yandex: { label: "Яндекс Музыка", icon: Music, color: "text-yellow-500" },
+  cpc: {
+    label: "CPC переходы",
+    icon: MousePointerClick,
+    color: "text-emerald-500",
+  },
 };
 
 const actionIcons: Record<
@@ -57,7 +64,15 @@ function formatPrice(price: number, unit: string) {
 
 function PricesGrid({ items }: { items: PriceListItem[] }) {
   const grouped: Record<string, PriceListItem[]> = {};
-  const order = ["youtube", "telegram", "vk", "instagram", "tiktok"];
+  const order = [
+    "youtube",
+    "telegram",
+    "vk",
+    "instagram",
+    "tiktok",
+    "yandex",
+    "cpc",
+  ];
 
   for (const item of items) {
     const cat = item.category || "other";
