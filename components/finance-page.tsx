@@ -84,9 +84,6 @@ function FinancePage() {
   const [activeTab, setActiveTab] = useState<TabValue>("deposit");
 
   const [depositAmount, setDepositAmount] = useState("");
-  const [depositMethod, setDepositMethod] = useState<"azvox" | "freekassa">(
-    "azvox"
-  );
 
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawMethod, setWithdrawMethod] = useState<"card" | "sbp">("card");
@@ -132,10 +129,7 @@ function FinancePage() {
       return;
     }
 
-    const endpoint =
-      depositMethod === "azvox"
-        ? "/api/payment/azvox/init"
-        : "/api/payment/freekassa/init";
+    const endpoint = "/api/payment/azvox/init";
 
     try {
       const res = await fetch(endpoint, {
@@ -310,31 +304,18 @@ function FinancePage() {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 text-amber-400 text-sm">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  Пополнение через Azvox и FreeKassa работает только через VPN.
+                  Пополнение через Azvox работает только через VPN.
                 </div>
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Метод оплаты</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Button
-                      variant={
-                        depositMethod === "azvox" ? "default" : "outline"
-                      }
+                      variant="default"
                       className="flex-col gap-1.5 h-auto py-3"
-                      onClick={() => setDepositMethod("azvox")}
                     >
                       <Landmark className="h-5 w-5" />
                       <span className="text-sm font-medium">Azvox</span>
-                    </Button>
-                    <Button
-                      variant={
-                        depositMethod === "freekassa" ? "default" : "outline"
-                      }
-                      className="flex-col gap-1.5 h-auto py-3"
-                      onClick={() => setDepositMethod("freekassa")}
-                    >
-                      <CreditCard className="h-5 w-5" />
-                      <span className="text-sm font-medium">FreeKassa</span>
                     </Button>
                   </div>
                 </div>
