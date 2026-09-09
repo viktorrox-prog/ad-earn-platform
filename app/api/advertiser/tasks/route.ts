@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
     url: string;
     reward: number;
     status: string;
+    quantity?: number;
+    completions?: number;
     createdAt: string;
   }[] = [];
 
@@ -75,6 +77,8 @@ export async function GET(request: NextRequest) {
       url: t.url,
       reward: t.reward,
       status: t.status,
+      quantity: t.quantity,
+      completions: t.completions,
       createdAt: t.createdAt,
     }));
   }
@@ -91,7 +95,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { advertiserId, title, description, type, url, reward } = parsed.data;
+  const { advertiserId, title, description, type, url, reward, quantity } =
+    parsed.data;
 
   const dbAvailable = await isDatabaseAvailable();
 
@@ -110,7 +115,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (reward > advertiser.balance) {
+  const totalBudget = Math.round(reward * quantity * 100) / 100;
+
+  if (totalBudget > advertiser.balance) {
     return NextResponse.json(
       { error: "Недостаточно средств на балансе" },
       { status: 400 }
@@ -130,6 +137,7 @@ export async function POST(request: NextRequest) {
       url,
       reward,
       status: "active",
+      quantity,
     },
     reward
   );
@@ -151,6 +159,8 @@ export async function POST(request: NextRequest) {
       url: task.url,
       reward: task.reward,
       status: task.status,
+      quantity: task.quantity,
+      completions: task.completions,
       createdAt: task.createdAt,
     },
     remainingBalance: updated.balance,
