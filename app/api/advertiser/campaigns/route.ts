@@ -9,7 +9,6 @@ import type {
 } from "@/lib/models";
 import {
   getAdvertiserById,
-  updateAdvertiserBalance,
   getCampaignsByAdvertiserId,
   createCampaign,
   createAd,
@@ -147,20 +146,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const newBalance = advertiser.balance - budget;
-
   if (dbAvailable) {
-    // Сначала атомарно списываем бюджет: условие внутри updateAdvertiserBalance
-    // не даёт балансу уйти ниже нуля при конкурентных списаниях.
-    const updated = await updateAdvertiserBalance(advertiserId, -budget);
-    if (!updated) {
-      return NextResponse.json(
-        { error: "Недостаточно средств на балансе" },
-        { status: 400 }
-      );
-    }
-    const deductedBalance = updated.balance;
-
+    // Бюджет заранее НЕ списываем: оплата происходит за каждый реальный
+    // просмотр в recordCampaignView (app/api/ads/watch). Если списать весь
+    // бюджет здесь, то на момент показа на балансе может не остаться средств,
+    // и транзакция recordCampaignView будет откатываться, а статистика кампании
+    // (показы/расходы) не станет обновляться. Поэтому здесь только проверяем,
+    // что на балансе достаточно средств на весь бюджет кампании.
     const campaign = await createCampaign({
       advertiserId,
       title,
@@ -216,7 +208,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ...campaign,
-      remainingBalance: deductedBalance,
+      remainingBalance: advertiser.balance,
     });
   }
 
@@ -237,7 +229,7 @@ export async function POST(request: NextRequest) {
     views: 0,
     clicks: 0,
     spend: 0,
-    remainingBalance: newBalance,
+    remainingBalance: advertiser.balance,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
