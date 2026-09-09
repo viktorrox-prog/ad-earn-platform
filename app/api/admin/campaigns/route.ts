@@ -5,15 +5,46 @@ import {
   getAllCampaigns,
   updateCampaignStatus,
   createCampaign,
+  createAd,
+  createTask,
   MIN_VIEWS_BY_CAMPAIGN_TYPE,
+  type CampaignType,
+  type TaskPlatform,
+  type TaskActionType,
+  type TaskType,
 } from "@/lib/models";
-import { mockCampaigns } from "@/lib/mock-data";
+import { mockAds, mockCampaigns, mockTasks } from "@/lib/mock-data";
 import { adminCreateCampaignSchema } from "@/lib/validation/admin";
 
 const moderateSchema = z.object({
   campaignId: z.string().min(1),
   status: z.enum(["active", "paused", "completed"]),
 });
+
+function campaignTypeToTaskMapping(type: CampaignType): {
+  taskType: TaskType;
+  platform: TaskPlatform;
+  actionType: TaskActionType;
+} | null {
+  switch (type) {
+    case "survey":
+      return { taskType: "survey", platform: "survey", actionType: "survey" };
+    case "app_install":
+      return {
+        taskType: "app_install",
+        platform: "app",
+        actionType: "install",
+      };
+    case "subscription":
+      return {
+        taskType: "subscription",
+        platform: "telegram",
+        actionType: "subscribe",
+      };
+    default:
+      return null;
+  }
+}
 
 export async function GET() {
   const dbAvailable = await isDatabaseAvailable();
@@ -98,6 +129,40 @@ export async function POST(request: NextRequest) {
           costPerView,
           status: "active",
         });
+
+        const isAdType =
+          type === "video" || type === "banner" || type === "cpc";
+        if (isAdType && (mediaUrl || targetUrl)) {
+          await createAd({
+            title,
+            description,
+            type: type as "video" | "banner" | "cpc",
+            mediaUrl: mediaUrl || undefined,
+            targetUrl: targetUrl || undefined,
+            reward: costPerView,
+            duration,
+            status: "active",
+            campaignId: campaign.id,
+            advertiserId: "admin",
+          });
+        }
+
+        const taskMapping = campaignTypeToTaskMapping(type);
+        if (taskMapping) {
+          await createTask({
+            title,
+            description: taskDescription || `Задание: ${title}`,
+            platform: taskMapping.platform,
+            actionType: taskMapping.actionType,
+            taskType: taskMapping.taskType,
+            url: targetUrl || mediaUrl || "",
+            reward: costPerView,
+            status: "active",
+            campaignId: campaign.id,
+            advertiserId: "admin",
+          });
+        }
+
         return NextResponse.json(campaign);
       } catch (err) {
         console.warn("Failed to create campaign in DB", err);
@@ -127,6 +192,45 @@ export async function POST(request: NextRequest) {
       updatedAt: now,
     };
     mockCampaigns.push(campaign);
+
+    const isAdType = type === "video" || type === "banner" || type === "cpc";
+    if (isAdType && (mediaUrl || targetUrl)) {
+      mockAds.push({
+        id: randomUUID(),
+        title,
+        description,
+        type: type as "video" | "banner" | "cpc",
+        mediaUrl: mediaUrl || undefined,
+        targetUrl: targetUrl || undefined,
+        reward: costPerView,
+        duration,
+        status: "active",
+        campaignId: campaign.id,
+        advertiserId: "admin",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const taskMapping = campaignTypeToTaskMapping(type);
+    if (taskMapping) {
+      mockTasks.push({
+        id: randomUUID(),
+        title,
+        description: taskDescription || `Задание: ${title}`,
+        platform: taskMapping.platform,
+        actionType: taskMapping.actionType,
+        taskType: taskMapping.taskType,
+        url: targetUrl || mediaUrl || "",
+        reward: costPerView,
+        status: "active",
+        campaignId: campaign.id,
+        advertiserId: "admin",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
     return NextResponse.json(campaign);
   }
 
