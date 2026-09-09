@@ -12,6 +12,7 @@ import {
   updateAdvertiserBalance,
   getCampaignsByAdvertiserId,
   createCampaign,
+  createAd,
   creditReferralReward,
   getAdminSettings,
   createTask,
@@ -29,8 +30,6 @@ function campaignTypeToTaskMapping(type: CampaignType): {
   actionType: TaskActionType;
 } | null {
   switch (type) {
-    case "cpc":
-      return { taskType: "cpc", platform: "cpc", actionType: "cpc" };
     case "survey":
       return { taskType: "survey", platform: "survey", actionType: "survey" };
     case "app_install":
@@ -182,6 +181,22 @@ export async function POST(request: NextRequest) {
         budget,
         advertiser.companyName
       );
+    }
+
+    const isAdType = type === "video" || type === "banner" || type === "cpc";
+    if (isAdType && (mediaUrl || targetUrl)) {
+      await createAd({
+        title,
+        description,
+        type: type as "video" | "banner" | "cpc",
+        mediaUrl: mediaUrl || undefined,
+        targetUrl: targetUrl || undefined,
+        reward: costPerView,
+        duration,
+        status: "active",
+        campaignId: campaign.id,
+        advertiserId,
+      });
     }
 
     const taskMapping = campaignTypeToTaskMapping(type);
