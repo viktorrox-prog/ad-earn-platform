@@ -698,6 +698,24 @@ export async function createAdView(data: Omit<AdView, "id">): Promise<AdView> {
   return view;
 }
 
+const MOSCOW_TIME_ZONE = "Europe/Moscow";
+
+/**
+ * Возвращает дату (YYYY-MM-DD) в часовом поясе платформы (Москва, UTC+3).
+ * watchedAt в AD_VIEWS хранится в UTC (toISOString), поэтому сравнение «по
+ * дню» выполняется после перевода каждого момента в московское время — иначе
+ * после местной полуночи счётчик дневного лимита не сбрасывался бы до 03:00.
+ */
+function toMoscowDate(value: Date | string): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: MOSCOW_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 export async function getTodayAdViewsCount(userId: string): Promise<number> {
   const result = await docClient.send(
     new QueryCommand({
@@ -706,6 +724,15 @@ export async function getTodayAdViewsCount(userId: string): Promise<number> {
       KeyConditionExpression: "#userId = :userId",
       ExpressionAttributeNames: { "#userId": "userId" },
       ExpressionAttributeValues: { ":userId": userId },
+    })
+  );
+
+  const views = (result.Items as AdView[]) ?? [];
+  const today = toMoscowDate(new Date());
+
+  return views.filter((v) => toMoscowDate(v.watchedAt) === today).length;
+}
+
     })
   );
 
