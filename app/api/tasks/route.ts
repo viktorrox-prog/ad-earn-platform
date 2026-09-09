@@ -76,6 +76,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Задание не активно" }, { status: 400 });
   }
 
+  if (
+    task.quantity != null &&
+    task.completions != null &&
+    task.completions >= task.quantity
+  ) {
+    return NextResponse.json(
+      { error: "Лимит выполнений задания исчерпан" },
+      { status: 400 }
+    );
+  }
+
   const dbAvailable = await isDatabaseAvailable();
 
   if (!dbAvailable) {
