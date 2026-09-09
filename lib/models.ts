@@ -733,15 +733,6 @@ export async function getTodayAdViewsCount(userId: string): Promise<number> {
   return views.filter((v) => toMoscowDate(v.watchedAt) === today).length;
 }
 
-    })
-  );
-
-  const views = (result.Items as AdView[]) ?? [];
-  const today = new Date().toISOString().split("T")[0];
-
-  return views.filter((v) => v.watchedAt.startsWith(today)).length;
-}
-
 export async function getActiveTasks(): Promise<Task[]> {
   const result = await docClient.send(
     new QueryCommand({
