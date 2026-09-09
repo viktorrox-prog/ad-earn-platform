@@ -76,6 +76,11 @@ export const createStandaloneTaskSchema = z.object({
     .number()
     .positive("Цена за задание должна быть положительной")
     .max(100000, "Цена за задание слишком велика"),
+  quantity: z
+    .number()
+    .int("Количество выполнений должно быть целым числом")
+    .min(1, "Введите количество выполнений")
+    .max(1000000, "Слишком большое количество выполнений"),
 });
 
 export type AdvertiserRegisterInput = z.infer<typeof advertiserRegisterSchema>;
