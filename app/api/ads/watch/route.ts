@@ -6,6 +6,7 @@ import {
   getTodayAdViewsCount,
   createAdView,
   createTransaction,
+  recordCampaignView,
 } from "@/lib/models";
 import { mockAds } from "@/lib/mock-data";
 
@@ -78,6 +79,10 @@ export async function POST(request: NextRequest) {
       description: `Просмотр рекламы — «${ad.title}»`,
       status: "completed",
     });
+
+    if (ad.campaignId && ad.advertiserId) {
+      await recordCampaignView(ad.campaignId, ad.advertiserId, ad.reward);
+    }
   }
 
   const reward = Math.round(ad.duration * 0.00385 * 100) / 100;
