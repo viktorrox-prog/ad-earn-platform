@@ -41,7 +41,10 @@ export interface VerificationCode {
 }
 
 export type TransactionType =
-  "earnings" | "withdrawal" | "referral" | "deposit";
+  | "earnings"
+  | "withdrawal"
+  | "referral"
+  | "deposit";
 export type TransactionStatus = "completed" | "pending" | "failed";
 
 export interface ReferralClick {
@@ -90,7 +93,13 @@ export interface AdView {
 }
 
 export type TaskPlatform =
-  "youtube" | "vk" | "telegram" | "cpc" | "app" | "survey" | "other";
+  | "youtube"
+  | "vk"
+  | "telegram"
+  | "cpc"
+  | "app"
+  | "survey"
+  | "other";
 export type TaskActionType =
   | "watch"
   | "like"
@@ -101,7 +110,11 @@ export type TaskActionType =
   | "survey"
   | "other";
 export type TaskType =
-  "social" | "subscription" | "cpc" | "app_install" | "survey";
+  | "social"
+  | "subscription"
+  | "cpc"
+  | "app_install"
+  | "survey";
 export type TaskStatus = "active" | "inactive";
 
 export interface Task {
@@ -159,7 +172,12 @@ export interface Advertiser {
 }
 
 export type CampaignType =
-  "video" | "banner" | "cpc" | "survey" | "app_install" | "subscription";
+  | "video"
+  | "banner"
+  | "cpc"
+  | "survey"
+  | "app_install"
+  | "subscription";
 export type CampaignStatus = "active" | "paused" | "completed";
 
 export const MIN_VIEWS_BY_CAMPAIGN_TYPE: Record<CampaignType, number> = {
@@ -557,11 +575,22 @@ export async function createAd(
  *
  * При просмотре объявления атомарно (одной транзакцией DynamoDB):
  *   - увеличиваются статистика кампании views/spend/completions;
- *   - списывается стоимость просмотра (cost) с баланса рекламодателя.
+ *   - для платной рекламы списывается стоимость просмотра (cost) с баланса
+ *     рекламодателя.
  *
- * Условие `#balance >= :cost` не даёт балансу уйти ниже нуля при конкурентных
- * списаниях. Если средств недостаточно, вся транзакция откатывается и
- * возвращается null — статистика кампании при этом не меняется.
+ * Расход кампании (spend) никогда не превышает её бюджет: стоимость списания
+ * ограничивается остатком бюджета (budget - spend). Это гарантирует корректную
+ * статистику («Потрачено / Остаток») и не позволяет списать больше заявленного
+ * бюджета даже при большом количестве просмотров.
+ *
+ * Условие `#balance >= :cost` не даёт балансу рекламодателя уйти ниже нуля при
+ * конкурентных списаниях. Если средств недостаточно, вся транзакция откатывается
+ * и возвращается null — статистика кампании при этом не меняется.
+ *
+ * Реклама админа бесплатная: запись advertiser «admin» в ADVERTISERS не
+ * создаётся, поэтому списание баланса для неё не выполняется, а статистика
+ * кампании (показы/расходы) всё равно наращивается. Иначе транзакция падала бы
+ * из-за отсутствующей записи рекламодателя и показанный ролик не учитывался бы.
  *
  * Возвращает актуальный остаток на балансе рекламодателя после списания.
  */
@@ -571,6 +600,36 @@ export async function recordCampaignView(
   cost: number
 ): Promise<{ balance: number } | null> {
   const now = new Date().toISOString();
+
+  const campaign = await getCampaignById(campaignId);
+  if (!campaign) return null;
+
+  // Не списываем сверх оставшегося бюджета кампании.
+  const remainingBudget = Math.max(0, campaign.budget - campaign.spend);
+  const actualCost = Math.min(cost, remainingBudget);
+  if (actualCost <= 0) {
+    return advertiserId === "admin"
+      ? { balance: 0 }
+      : { balance: (await getAdvertiserById(advertiserId))?.balance ?? 0 };
+  }
+
+  if (advertiserId === "admin") {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: TableName.CAMPAIGNS,
+        Key: { id: campaignId },
+        UpdateExpression:
+          "ADD #views :inc, spend :cost, completions :inc SET updatedAt = :updatedAt",
+        ExpressionAttributeNames: { "#views": "views" },
+        ExpressionAttributeValues: {
+          ":inc": 1,
+          ":cost": actualCost,
+          ":updatedAt": now,
+        },
+      })
+    );
+    return { balance: 0 };
+  }
 
   try {
     await docClient.send(
@@ -585,7 +644,7 @@ export async function recordCampaignView(
               ExpressionAttributeNames: { "#views": "views" },
               ExpressionAttributeValues: {
                 ":inc": 1,
-                ":cost": cost,
+                ":cost": actualCost,
                 ":updatedAt": now,
               },
             },
@@ -599,8 +658,8 @@ export async function recordCampaignView(
               ConditionExpression: "#balance >= :cost",
               ExpressionAttributeNames: { "#balance": "balance" },
               ExpressionAttributeValues: {
-                ":delta": -cost,
-                ":cost": cost,
+                ":delta": -actualCost,
+                ":cost": actualCost,
                 ":updatedAt": now,
               },
             },
@@ -611,7 +670,7 @@ export async function recordCampaignView(
   } catch (err) {
     if ((err as { name?: string }).name === "TransactionCanceledException") {
       console.warn(
-        `[ads] ${campaignId}: недостаточно средств рекламодателя для списания ${cost}`
+        `[ads] ${campaignId}: недостаточно средств рекламодателя для списания ${actualCost}`
       );
       return null;
     }
@@ -1415,6 +1474,65 @@ export async function updateCampaignStatus(
     })
   );
   return (result.Attributes as Campaign) ?? null;
+}
+
+/**
+ * Синхронизация статуса объявлений кампании.
+ *
+ * При смене статуса кампании (например, пауза/активация админом) связанные
+ * объявления должны перестать/начать показываться в ленте рекламы. Без этого
+ * «приостановленная» кампания продолжала бы демонстрироваться пользователям.
+ */
+export async function updateAdsStatusByCampaignId(
+  campaignId: string,
+  status: AdStatus
+): Promise<void> {
+  const result = await docClient.send(
+    new ScanCommand({ TableName: TableName.ADS })
+  );
+  const ads = (result.Items as Ad[]) ?? [];
+  for (const ad of ads.filter((a) => a.campaignId === campaignId)) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: TableName.ADS,
+        Key: { id: ad.id },
+        UpdateExpression: "set #status = :status, updatedAt = :updatedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":status": status,
+          ":updatedAt": new Date().toISOString(),
+        },
+      })
+    );
+  }
+}
+
+/**
+ * Синхронизация статуса заданий кампании. Аналогично объявлениям — при паузе
+ * кампании связанные задания перестают показываться пользователям.
+ */
+export async function updateTasksStatusByCampaignId(
+  campaignId: string,
+  status: TaskStatus
+): Promise<void> {
+  const result = await docClient.send(
+    new ScanCommand({ TableName: TableName.TASKS })
+  );
+  const tasks = (result.Items as Task[]) ?? [];
+  for (const task of tasks.filter((t) => t.campaignId === campaignId)) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: TableName.TASKS,
+        Key: { id: task.id },
+        UpdateExpression: "set #status = :status, updatedAt = :updatedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":status": status,
+          ":updatedAt": new Date().toISOString(),
+        },
+      })
+    );
+  }
 }
 
 export async function getAllWithdrawalRequests(): Promise<WithdrawalRequest[]> {
