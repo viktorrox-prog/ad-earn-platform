@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@adearn.ru";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "admin123";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "Devil1666";
 
 const loginSchema = z.object({
   email: z.string().email(),
