@@ -62,7 +62,7 @@ export interface Transaction {
   createdAt: string;
 }
 
-export type AdType = "video" | "banner";
+export type AdType = "video" | "banner" | "cpc";
 export type AdStatus = "active" | "inactive";
 
 export interface Ad {
@@ -70,10 +70,13 @@ export interface Ad {
   title: string;
   description?: string;
   type: AdType;
-  mediaUrl: string;
+  mediaUrl?: string;
+  targetUrl?: string;
   reward: number;
   duration: number;
   status: AdStatus;
+  campaignId?: string;
+  advertiserId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -113,6 +116,8 @@ export interface Task {
   status: TaskStatus;
   campaignId?: string;
   advertiserId?: string;
+  quantity?: number;
+  completions?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -525,6 +530,98 @@ export async function getAdById(id: string): Promise<Ad | null> {
   return (result.Item as Ad) ?? null;
 }
 
+export async function createAd(
+  data: Omit<Ad, "id" | "createdAt" | "updatedAt">
+): Promise<Ad> {
+  const { randomUUID } = await import("crypto");
+  const now = new Date().toISOString();
+  const ad: Ad = {
+    ...data,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await docClient.send(
+    new PutCommand({
+      TableName: TableName.ADS,
+      Item: ad,
+    })
+  );
+
+  return ad;
+}
+
+/**
+ * Учёт реального просмотра рекламы кампании.
+ *
+ * При просмотре объявления атомарно (одной транзакцией DynamoDB):
+ *   - увеличиваются статистика кампании views/spend/completions;
+ *   - списывается стоимость просмотра (cost) с баланса рекламодателя.
+ *
+ * Условие `#balance >= :cost` не даёт балансу уйти ниже нуля при конкурентных
+ * списаниях. Если средств недостаточно, вся транзакция откатывается и
+ * возвращается null — статистика кампании при этом не меняется.
+ *
+ * Возвращает актуальный остаток на балансе рекламодателя после списания.
+ */
+export async function recordCampaignView(
+  campaignId: string,
+  advertiserId: string,
+  cost: number
+): Promise<{ balance: number } | null> {
+  const now = new Date().toISOString();
+
+  try {
+    await docClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: TableName.CAMPAIGNS,
+              Key: { id: campaignId },
+              UpdateExpression:
+                "ADD #views :inc, spend :cost, completions :inc SET updatedAt = :updatedAt",
+              ExpressionAttributeNames: { "#views": "views" },
+              ExpressionAttributeValues: {
+                ":inc": 1,
+                ":cost": cost,
+                ":updatedAt": now,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: TableName.ADVERTISERS,
+              Key: { id: advertiserId },
+              UpdateExpression:
+                "ADD #balance :delta SET updatedAt = :updatedAt",
+              ConditionExpression: "#balance >= :cost",
+              ExpressionAttributeNames: { "#balance": "balance" },
+              ExpressionAttributeValues: {
+                ":delta": -cost,
+                ":cost": cost,
+                ":updatedAt": now,
+              },
+            },
+          },
+        ],
+      })
+    );
+  } catch (err) {
+    if ((err as { name?: string }).name === "TransactionCanceledException") {
+      console.warn(
+        `[ads] ${campaignId}: недостаточно средств рекламодателя для списания ${cost}`
+      );
+      return null;
+    }
+    throw err;
+  }
+
+  const advertiser = await getAdvertiserById(advertiserId);
+  return { balance: advertiser?.balance ?? 0 };
+}
+
 export async function createAdView(data: Omit<AdView, "id">): Promise<AdView> {
   const { randomUUID } = await import("crypto");
   const view: AdView = {
@@ -569,7 +666,15 @@ export async function getActiveTasks(): Promise<Task[]> {
       ExpressionAttributeValues: { ":status": "active" },
     })
   );
-  return (result.Items as Task[]) ?? [];
+  const tasks = (result.Items as Task[]) ?? [];
+  return tasks.filter(
+    (t) =>
+      !(
+        t.quantity != null &&
+        t.completions != null &&
+        t.completions >= t.quantity
+      )
+  );
 }
 
 export async function getActiveTasksByType(taskType: string): Promise<Task[]> {
@@ -617,16 +722,18 @@ export async function createTask(
 }
 
 /**
- * Атомарное создание задания рекламодателя со списанием цены с баланса.
+ * Атомарное создание задания рекламодателя со списанием всего бюджета с баланса.
  *
- * Задание и списание выполняются одной транзакцией DynamoDB (TransactWriteItems):
- * либо создаётся задание И списываются средства, либо не происходит ничего.
- * Это исключает потерю средств, когда задание падает после списания (баланс в
- * минус без созданного задания), а также двойное/повторное списание.
+ * Создание задания и списание выполняются одной транзакцией DynamoDB
+ * (TransactWriteItems): либо создаётся задание И списываются средства, либо
+ * не происходит ничего. Это исключает потерю средств, когда задание падает
+ * после списания (баланс в минус без созданного задания), а также
+ * двойное/повторное списание.
  *
- * Условие `#balance >= :reward` не даёт балансу уйти ниже нуля. При
- * TransactionCanceledException (недостаточно средств) возвращается null, и ни
- * одно изменение не применяется.
+ * С баланса списывается сразу вся сумма бюджета задания = reward × quantity
+ * (количество выполнений). Условие `#balance >= :total` не даёт балансу уйти
+ * ниже нуля. При TransactionCanceledException (недостаточно средств)
+ * возвращается null, и ни одно изменение не применяется.
  *
  * Возвращает созданное задание и актуальный остаток на балансе после списания.
  */
@@ -637,10 +744,14 @@ export async function createStandaloneTaskWithBalanceDeduct(
 ): Promise<{ task: Task; balance: number } | null> {
   const { randomUUID } = await import("crypto");
   const now = new Date().toISOString();
+  const quantity = data.quantity ?? 1;
+  const total = Math.round(reward * quantity * 100) / 100;
   const task: Task = {
     ...data,
     advertiserId,
     id: randomUUID(),
+    quantity,
+    completions: 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -655,11 +766,11 @@ export async function createStandaloneTaskWithBalanceDeduct(
               Key: { id: advertiserId },
               UpdateExpression:
                 "ADD #balance :delta SET updatedAt = :updatedAt",
-              ConditionExpression: "#balance >= :reward",
+              ConditionExpression: "#balance >= :total",
               ExpressionAttributeNames: { "#balance": "balance" },
               ExpressionAttributeValues: {
-                ":delta": -reward,
-                ":reward": reward,
+                ":delta": -total,
+                ":total": total,
                 ":updatedAt": now,
               },
             },
@@ -676,7 +787,7 @@ export async function createStandaloneTaskWithBalanceDeduct(
   } catch (err) {
     if ((err as { name?: string }).name === "TransactionCanceledException") {
       console.warn(
-        `[task] ${advertiserId}: недостаточно средств для создания задания (${reward})`
+        `[task] ${advertiserId}: недостаточно средств для создания задания (${total})`
       );
       return null;
     }
@@ -685,6 +796,42 @@ export async function createStandaloneTaskWithBalanceDeduct(
 
   const advertiser = await getAdvertiserById(advertiserId);
   return { task, balance: advertiser?.balance ?? 0 };
+}
+
+/**
+ * Учёт подтверждённого выполнения отдельного задания рекламодателя.
+ *
+ * Инкрементирует счётчик выполнений задания и, если достигнут лимит
+ * (`quantity`), деактивирует задание — оно перестаёт показываться пользователям.
+ */
+export async function incrementTaskCompletions(taskId: string): Promise<void> {
+  const task = await getTaskById(taskId);
+  if (!task) return;
+
+  const next = (task.completions ?? 0) + 1;
+  const reachedLimit = task.quantity != null && next >= task.quantity;
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TableName.TASKS,
+      Key: { id: taskId },
+      UpdateExpression: "SET completions = :next, updatedAt = :updatedAt",
+      ...(reachedLimit
+        ? {
+            UpdateExpression:
+              "SET completions = :next, #status = :inactive, updatedAt = :updatedAt",
+          }
+        : {}),
+      ExpressionAttributeNames: reachedLimit
+        ? { "#status": "status" }
+        : undefined,
+      ExpressionAttributeValues: {
+        ":next": next,
+        ":inactive": "inactive",
+        ":updatedAt": new Date().toISOString(),
+      },
+    })
+  );
 }
 
 export async function createTaskCompletion(
