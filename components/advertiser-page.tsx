@@ -938,6 +938,7 @@ function CreateTaskForm({
   const [type, setType] = useState<Campaign["type"]>("video");
   const [url, setUrl] = useState("");
   const [reward, setReward] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [loading, setLoading] = useState(false);
 
   const typeOptions: {
@@ -981,8 +982,13 @@ function CreateTaskForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numericReward = Number(reward);
+    const numericQuantity = Number(quantity);
     if (!numericReward || numericReward <= 0) {
       toast.error("Укажите цену за задание");
+      return;
+    }
+    if (!numericQuantity || numericQuantity <= 0) {
+      toast.error("Укажите количество выполнений");
       return;
     }
     setLoading(true);
@@ -998,6 +1004,7 @@ function CreateTaskForm({
           type,
           url,
           reward: numericReward,
+          quantity: numericQuantity,
         }),
       });
 
@@ -1089,27 +1096,66 @@ function CreateTaskForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Цена за задание (₽)</label>
-        <Input
-          type="number"
-          value={reward}
-          onChange={(e) => setReward(e.target.value)}
-          min={1}
-          step={0.01}
-          placeholder="5.00"
-          required
-        />
-        <p className="text-xs text-muted-foreground">
-          Сумма будет списана с вашего баланса и начислена пользователю после
-          подтверждения выполнения
-        </p>
-        {reward && Number(reward) > 0 && balance < Number(reward) && (
-          <p className="text-xs text-red-400">
-            Недостаточно средств: доступно {balance.toFixed(2)} ₽
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Цена за задание (₽)</label>
+          <Input
+            type="number"
+            value={reward}
+            onChange={(e) => setReward(e.target.value)}
+            min={1}
+            step={0.01}
+            placeholder="5.00"
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            Начисляется пользователю после подтверждения
           </p>
-        )}
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Количество выполнений</label>
+          <Input
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            min={1}
+            step={1}
+            placeholder="100"
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            Лимит выполнений задания
+          </p>
+        </div>
       </div>
+
+      {(() => {
+        const numericReward = Number(reward);
+        const numericQuantity = Number(quantity);
+        const total =
+          numericReward > 0 && numericQuantity > 0
+            ? Math.round(numericReward * numericQuantity * 100) / 100
+            : 0;
+        return (
+          <div className="rounded-xl bg-primary/5 border border-primary/10 p-4 space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Бюджет задания (рассчитан автоматически)
+            </p>
+            <p className="text-xl font-bold text-primary">
+              {total.toLocaleString()} ₽
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {numericQuantity || "0"} выполнений ×{" "}
+              {(numericReward || 0).toFixed(2)} ₽ — списывается сразу с баланса
+            </p>
+            {total > 0 && balance < total && (
+              <p className="text-xs text-red-400">
+                Недостаточно средств: доступно {balance.toFixed(2)} ₽
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="flex gap-3 pt-2">
         <Button
@@ -1123,7 +1169,12 @@ function CreateTaskForm({
         <Button
           type="submit"
           className="flex-1 gap-2"
-          disabled={loading || (reward !== "" && Number(reward) > balance)}
+          disabled={
+            loading ||
+            (Number(reward) > 0 && Number(quantity) > 0
+              ? Number(reward) * Number(quantity) > balance
+              : false)
+          }
         >
           {loading ? "Создание..." : "Создать задание"}
         </Button>
@@ -1354,6 +1405,8 @@ export function AdvertiserPage() {
       url: string;
       reward: number;
       status: string;
+      quantity?: number;
+      completions?: number;
       createdAt: string;
     }[]
   >([]);
@@ -1827,6 +1880,41 @@ export function AdvertiserPage() {
                               <p className="text-xs text-green-400 font-medium mt-1">
                                 +{task.reward.toFixed(2)} ₽ за задание
                               </p>
+                              {task.quantity != null && (
+                                <div className="mt-2 space-y-1">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-muted-foreground">
+                                      Выполнено
+                                    </span>
+                                    <span className="font-medium">
+                                      {task.completions ?? 0} / {task.quantity}
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                    <div
+                                      className="h-full bg-primary rounded-full transition-all"
+                                      style={{
+                                        width: `${Math.min(
+                                          100,
+                                          Math.round(
+                                            ((task.completions ?? 0) /
+                                              task.quantity) *
+                                              100
+                                          )
+                                        )}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  {task.status !== "active" &&
+                                    (task.completions ?? 0) >=
+                                      task.quantity && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Лимит выполнений достигнут — задание
+                                        скрыто от пользователей
+                                      </p>
+                                    )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </CardContent>
