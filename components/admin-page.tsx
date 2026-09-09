@@ -450,7 +450,7 @@ function CampaignsPanel() {
       form.type as keyof typeof MIN_VIEWS_BY_CAMPAIGN_TYPE
     ] ?? MIN_VIEWS_BY_CAMPAIGN_TYPE.video;
 
-  const budget = Math.round(form.views * form.duration * 0.05 * 100) / 100;
+  const budget = Math.round(form.views * form.duration * 0.055 * 100) / 100;
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true);
@@ -715,8 +715,8 @@ function CampaignsPanel() {
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    Цена за просмотр: {(form.duration * 0.05).toFixed(2)} ₽
-                    (0.05 ₽/сек)
+                    Цена за просмотр: {(form.duration * 0.055).toFixed(2)} ₽
+                    (0.055 ₽/сек)
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -762,7 +762,7 @@ function CampaignsPanel() {
                 <span className="text-muted-foreground">
                   {" "}
                   ({form.views.toLocaleString()} ×{" "}
-                  {(form.duration * 0.05).toFixed(2)} ₽)
+                  {(form.duration * 0.055).toFixed(2)} ₽)
                 </span>
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
@@ -882,6 +882,7 @@ function WithdrawalsPanel() {
   }
 
   const methodLabel: Record<string, string> = {
+    azvox: "Кошелёк Azvox",
     card: "Карта",
     sbp: "СБП",
   };
