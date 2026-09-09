@@ -4,6 +4,8 @@ import { isDatabaseAvailable } from "@/lib/db";
 import {
   getAllCampaigns,
   updateCampaignStatus,
+  updateAdsStatusByCampaignId,
+  updateTasksStatusByCampaignId,
   createCampaign,
   createAd,
   createTask,
@@ -248,14 +250,30 @@ export async function POST(request: NextRequest) {
   if (dbAvailable) {
     try {
       await updateCampaignStatus(campaignId, status);
+      // Приостановка/завершение кампании должна отключать показ связанных
+      // объявлений и заданий, активация — возвращать их в ленту.
+      const adStatus = status === "active" ? "active" : "inactive";
+      await updateAdsStatusByCampaignId(campaignId, adStatus);
+      await updateTasksStatusByCampaignId(campaignId, adStatus);
     } catch (err) {
       console.warn("Failed to update campaign status in DB", err);
+      return NextResponse.json(
+        { error: "Не удалось обновить статус кампании" },
+        { status: 500 }
+      );
     }
   }
 
   const campaign = mockCampaigns.find((c) => c.id === campaignId);
   if (campaign) {
     campaign.status = status;
+    const mockStatus = status === "active" ? "active" : "inactive";
+    for (const ad of mockAds) {
+      if (ad.campaignId === campaignId) ad.status = mockStatus;
+    }
+    for (const task of mockTasks) {
+      if (task.campaignId === campaignId) task.status = mockStatus;
+    }
   }
 
   return NextResponse.json({ message: "Статус кампании обновлён" });
