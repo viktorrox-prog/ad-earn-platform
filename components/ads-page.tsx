@@ -1,11 +1,12 @@
 "use client";
- 
+
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Play,
   ImageIcon,
+  ExternalLink,
   ArrowLeft,
   Eye,
   Clock,
@@ -47,6 +48,13 @@ function AdCard({
             </div>
             <span className="text-xs">Видеоролик</span>
           </div>
+        ) : ad.type === "cpc" ? (
+          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/20">
+              <ExternalLink className="h-6 w-6 text-primary" />
+            </div>
+            <span className="text-xs">Переход по ссылке</span>
+          </div>
         ) : (
           <div className="flex flex-col items-center gap-2 text-muted-foreground">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/20">
@@ -59,7 +67,11 @@ function AdCard({
           variant="secondary"
           className="absolute top-3 right-3 gap-1 text-xs"
         >
-          {ad.type === "video" ? "Видео" : "Баннер"}
+          {ad.type === "video"
+            ? "Видео"
+            : ad.type === "cpc"
+              ? "Переход"
+              : "Баннер"}
         </Badge>
       </div>
       <CardContent className="p-4">
@@ -74,8 +86,12 @@ function AdCard({
             +{ad.reward.toFixed(2)} ₽
           </span>
           <Button size="sm" onClick={onWatch} disabled={disabled}>
-            <Play className="h-3.5 w-3.5 mr-1.5" />
-            Смотреть
+            {ad.type === "cpc" ? (
+              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            {ad.type === "cpc" ? "Перейти" : "Смотреть"}
           </Button>
         </div>
       </CardContent>
@@ -126,6 +142,8 @@ function WatchModal({
           <h3 className="font-semibold text-sm flex items-center gap-2">
             {ad.type === "video" ? (
               <Play className="h-4 w-4 text-primary" />
+            ) : ad.type === "cpc" ? (
+              <ExternalLink className="h-4 w-4 text-primary" />
             ) : (
               <ImageIcon className="h-4 w-4 text-primary" />
             )}
@@ -171,8 +189,20 @@ function WatchModal({
               <span className="text-xs text-muted-foreground">
                 {ad.type === "video"
                   ? "Досмотрите ролик до конца"
-                  : "Ознакомьтесь с баннером"}
+                  : ad.type === "cpc"
+                    ? "Перейдите по ссылке, чтобы продолжить"
+                    : "Ознакомьтесь с баннером"}
               </span>
+              {ad.type === "cpc" && ad.targetUrl && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => window.open(ad.targetUrl, "_blank")}
+                >
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  Перейти на сайт
+                </Button>
+              )}
             </div>
           )}
         </div>
