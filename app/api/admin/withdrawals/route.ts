@@ -16,7 +16,7 @@ const actionSchema = z.object({
   withdrawalId: z.string().min(1),
   action: z.enum(["approve", "reject"]),
 });
-
+ 
 const WITHDRAWAL_WORKING_DAYS = 3;
 
 const SUPPORTED_METHODS = new Set(["azvox"]);
