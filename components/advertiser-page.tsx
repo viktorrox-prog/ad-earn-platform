@@ -1,5 +1,5 @@
 "use client";
- 
+
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -1459,6 +1459,41 @@ export function AdvertiserPage() {
       fetchCampaigns();
     }
   }, [advertiser, fetchCampaigns]);
+
+  const refreshBalance = useCallback(async () => {
+    if (!advertiser) return;
+    try {
+      const res = await fetch(
+        `/api/advertiser/balance?advertiserId=${advertiser.id}`
+      );
+      if (!res.ok) return;
+      const json = await res.json();
+      setAdvertiser((prev) =>
+        prev ? { ...prev, balance: json.balance } : prev
+      );
+    } catch {
+      // Сетевые ошибки при фоновом обновлении не должны прерывать работу.
+    }
+  }, [advertiser]);
+
+  useEffect(() => {
+    if (!advertiser) return;
+    const onFocus = () => {
+      fetchCampaigns();
+      refreshBalance();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        onFocus();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [advertiser, fetchCampaigns, refreshBalance]);
 
   const fetchTasks = useCallback(async () => {
     if (!advertiser) return;
