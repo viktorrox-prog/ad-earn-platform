@@ -41,10 +41,7 @@ export interface VerificationCode {
 }
 
 export type TransactionType =
-  | "earnings"
-  | "withdrawal"
-  | "referral"
-  | "deposit";
+  "earnings" | "withdrawal" | "referral" | "deposit";
 export type TransactionStatus = "completed" | "pending" | "failed";
 
 export interface ReferralClick {
@@ -93,13 +90,7 @@ export interface AdView {
 }
 
 export type TaskPlatform =
-  | "youtube"
-  | "vk"
-  | "telegram"
-  | "cpc"
-  | "app"
-  | "survey"
-  | "other";
+  "youtube" | "vk" | "telegram" | "cpc" | "app" | "survey" | "other";
 export type TaskActionType =
   | "watch"
   | "like"
@@ -110,11 +101,7 @@ export type TaskActionType =
   | "survey"
   | "other";
 export type TaskType =
-  | "social"
-  | "subscription"
-  | "cpc"
-  | "app_install"
-  | "survey";
+  "social" | "subscription" | "cpc" | "app_install" | "survey";
 export type TaskStatus = "active" | "inactive";
 
 export interface Task {
@@ -172,12 +159,7 @@ export interface Advertiser {
 }
 
 export type CampaignType =
-  | "video"
-  | "banner"
-  | "cpc"
-  | "survey"
-  | "app_install"
-  | "subscription";
+  "video" | "banner" | "cpc" | "survey" | "app_install" | "subscription";
 export type CampaignStatus = "active" | "paused" | "completed";
 
 export const MIN_VIEWS_BY_CAMPAIGN_TYPE: Record<CampaignType, number> = {
@@ -679,6 +661,28 @@ export async function recordCampaignView(
 
   const advertiser = await getAdvertiserById(advertiserId);
   return { balance: advertiser?.balance ?? 0 };
+}
+
+/**
+ * Учёт клика по ссылке рекламного объявления кампании.
+ *
+ * Атомарно увеличивает счётчик кликов (clicks) кампании. Вызывается, когда
+ * пользователь реально переходит по целевой ссылке CPC-объявления из ленты
+ * просмотра рекламы, чтобы рекламодатель видел число переходов по своим
+ * ссылкам в карточке кампании и статистике.
+ */
+export async function recordCampaignClick(campaignId: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TableName.CAMPAIGNS,
+      Key: { id: campaignId },
+      UpdateExpression: "ADD clicks :inc SET updatedAt = :updatedAt",
+      ExpressionAttributeValues: {
+        ":inc": 1,
+        ":updatedAt": new Date().toISOString(),
+      },
+    })
+  );
 }
 
 export async function createAdView(data: Omit<AdView, "id">): Promise<AdView> {
