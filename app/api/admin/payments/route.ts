@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isDatabaseAvailable } from "@/lib/db";
 import { getAllPayments } from "@/lib/models";
 import { mockPayments } from "@/lib/mock-data";
-
+ 
 export async function GET() {
   const dbAvailable = await isDatabaseAvailable();
 
