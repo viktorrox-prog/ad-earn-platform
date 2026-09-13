@@ -3,6 +3,7 @@ import { withdrawSchema } from "@/lib/validation/finance";
 import { isDatabaseAvailable } from "@/lib/db";
 import {
   createWithdrawalRequestWithReservation,
+  createWithdrawalRequest,
   getWithdrawalRequestsByUserId,
   getTransactionsByUserId,
 } from "@/lib/models";
@@ -24,9 +25,13 @@ export async function POST(request: NextRequest) {
   let transactions = mockTransactions.filter((t) => t.userId === userId);
 
   if (dbAvailable) {
-    const dbTransactions = await getTransactionsByUserId(userId);
-    if (dbTransactions.length > 0) {
-      transactions = dbTransactions;
+    try {
+      const dbTransactions = await getTransactionsByUserId(userId);
+      if (dbTransactions.length > 0) {
+        transactions = dbTransactions;
+      }
+    } catch (err) {
+      console.warn("Failed to load transactions for withdrawal balance", err);
     }
   }
 
@@ -43,13 +48,57 @@ export async function POST(request: NextRequest) {
   }
 
   if (dbAvailable) {
-    // Создаём заявку и сразу резервируем сумму одной транзакцией DynamoDB:
-    // отрицательная транзакция вывода уменьшает баланс, исключая «перевывод».
-    await createWithdrawalRequestWithReservation({
+    // Создаём заявку и сразу резервируем сумму одной транзакцией DynamoDB.
+    try {
+      await createWithdrawalRequestWithReservation({
+        userId,
+        amount,
+        method,
+        recipient,
+      });
+    } catch (err) {
+      console.error(
+        "[withdraw] Не удалось создать заявку с резервированием:",
+        err
+      );
+
+      // Fallback: если транзакционное создание недоступно (например, таблица
+      // withdrawal_requests ещё не создана миграцией), пробуем простую запись.
+      try {
+        await createWithdrawalRequest({
+          userId,
+          amount,
+          method,
+          recipient,
+        });
+        console.warn(
+          "[withdraw] Заявка создана без резервирования (fallback)"
+        );
+      } catch (fallbackErr) {
+        console.error(
+          "[withdraw] Fallback создания заявки тоже не сработал:",
+          fallbackErr
+        );
+        return NextResponse.json(
+          {
+            error:
+              "Не удалось создать заявку на вывод. Проверьте, что миграция базы выполнена.",
+          },
+          { status: 500 }
+        );
+      }
+    }
+  } else {
+    // Режим без БД: записываем в mock, чтобы заявка была видна в текущей сессии.
+    const { randomUUID } = await import("crypto");
+    mockWithdrawalRequests.push({
+      id: randomUUID(),
       userId,
       amount,
       method,
       recipient,
+      status: "pending",
+      createdAt: new Date().toISOString(),
     });
   }
 
@@ -74,9 +123,13 @@ export async function GET(request: NextRequest) {
   let requests = mockWithdrawalRequests.filter((r) => r.userId === userId);
 
   if (dbAvailable) {
-    const dbRequests = await getWithdrawalRequestsByUserId(userId);
-    if (dbRequests.length > 0) {
-      requests = dbRequests;
+    try {
+      const dbRequests = await getWithdrawalRequestsByUserId(userId);
+      if (dbRequests.length > 0) {
+        requests = dbRequests;
+      }
+    } catch (err) {
+      console.warn("Failed to load withdrawal requests", err);
     }
   }
 
