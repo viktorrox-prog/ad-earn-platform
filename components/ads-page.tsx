@@ -1,5 +1,5 @@
 "use client";
-  
+
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -101,15 +101,21 @@ function AdCard({
 
 function WatchModal({
   ad,
+  userId,
   onComplete,
   onClose,
 }: {
   ad: Ad;
+  userId: string;
   onComplete: () => void;
   onClose: () => void;
 }) {
   const [countdown, setCountdown] = useState(ad.duration);
   const [paused, setPaused] = useState(false);
+  // Для CPC-объявлений таймер запускается ТОЛЬКО после реального перехода
+  // по целевой ссылке. Для видео и баннера — сразу при открытии окна.
+  const [clicked, setClicked] = useState(ad.type !== "cpc");
+  const clickRecordedRef = useRef(false);
   const completed = countdown <= 0;
   const rewardCalledRef = useRef(false);
 
@@ -123,10 +129,10 @@ function WatchModal({
   }, []);
 
   useEffect(() => {
-    if (completed || paused) return;
+    if (completed || paused || !clicked) return;
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
-  }, [countdown, completed, paused]);
+  }, [countdown, completed, paused, clicked]);
 
   useEffect(() => {
     if (completed && !rewardCalledRef.current) {
@@ -134,6 +140,24 @@ function WatchModal({
       onComplete();
     }
   }, [completed, onComplete]);
+
+  const handleTransition = () => {
+    if (ad.targetUrl) {
+      window.open(ad.targetUrl, "_blank");
+    }
+    setClicked(true);
+    // Фиксируем клик по ссылке объявления для статистики рекламодателя.
+    if (!clickRecordedRef.current) {
+      clickRecordedRef.current = true;
+      fetch("/api/ads/click", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, adId: ad.id }),
+      }).catch(() => {});
+    }
+  };
+
+  const showCountdown = completed || paused || (ad.type !== "cpc" || clicked);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -179,6 +203,29 @@ function WatchModal({
                 Таймер на паузе — вернитесь на вкладку
               </span>
             </div>
+          ) : ad.type === "cpc" && !clicked ? (
+            <div className="flex flex-col items-center gap-3 px-6 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/20">
+                <ExternalLink className="h-8 w-8 text-primary" />
+              </div>
+              <span className="text-sm font-medium">
+                Перейдите по ссылке, чтобы начать просмотр
+              </span>
+              {ad.targetUrl && (
+                <Button
+                  size="lg"
+                  onClick={handleTransition}
+                  className="gap-2 mt-1"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Перейти по ссылке
+                </Button>
+              )}
+              <span className="text-xs text-muted-foreground">
+                Ссылка откроется в новой вкладке. Таймер запустится сразу после
+                перехода.
+              </span>
+            </div>
           ) : (
             <div className="flex flex-col items-center gap-3">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
@@ -190,17 +237,17 @@ function WatchModal({
                 {ad.type === "video"
                   ? "Досмотрите ролик до конца"
                   : ad.type === "cpc"
-                    ? "Перейдите по ссылке, чтобы продолжить"
+                    ? "Отличный переход! Ожидайте окончания таймера"
                     : "Ознакомьтесь с баннером"}
               </span>
               {ad.type === "cpc" && ad.targetUrl && (
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => window.open(ad.targetUrl, "_blank")}
+                  onClick={handleTransition}
                 >
                   <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                  Перейти на сайт
+                  Перейти на сайт ещё раз
                 </Button>
               )}
             </div>
@@ -217,6 +264,11 @@ function WatchModal({
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
               Пауза
+            </div>
+          ) : ad.type === "cpc" && !clicked ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <ExternalLink className="h-4 w-4" />
+              Нажмите «Перейти по ссылке»
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -432,6 +484,7 @@ export function AdsPage() {
       {watchingAd && (
         <WatchModal
           ad={watchingAd}
+          userId={user.id}
           onComplete={handleWatchComplete}
           onClose={() => setWatchingAd(null)}
         />
