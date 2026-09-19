@@ -48,7 +48,7 @@ export function SiteFooter() {
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Мы здесь, чтобы помочь. Наша команда поддержки отвечает в среднем
-              за 5 минут.mv73o881lczfft1h
+              за 5 минут.
             </p>
             <ul className="space-y-2.5">
               {supportLinks.map((link) => (
