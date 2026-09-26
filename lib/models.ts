@@ -2143,6 +2143,52 @@ export async function createHomepageBanner(
   return banner;
 }
 
+/**
+ * Атомарная покупка рекламного баннера на главной странице.
+ *
+ * Запись баннера (homepage_banners, статус pending) и транзакция списания
+ * стоимости (300 ₽ × количество суток, тип "withdrawal", отрицательная сумма)
+ * создаются одной транзакцией DynamoDB (TransactWriteItems): либо создаются
+ * обе, либо не создаётся ни одна. Это исключает ситуацию, когда баннер создан,
+ * а средства не списаны (или наоборот).
+ */
+export async function createHomepageBannerWithPayment(
+  data: Omit<HomepageBanner, "id" | "createdAt"> & { days: number }
+): Promise<HomepageBanner> {
+  const { randomUUID } = await import("crypto");
+  const now = new Date().toISOString();
+  const totalPrice = 300 * data.days;
+  const banner: HomepageBanner = {
+    id: randomUUID(),
+    userId: data.userId,
+    imageUrl: data.imageUrl,
+    targetUrl: data.targetUrl,
+    status: "pending",
+    createdAt: now,
+    expiresAt: data.expiresAt,
+  };
+  const transaction: Transaction = {
+    id: randomUUID(),
+    userId: data.userId,
+    type: "withdrawal",
+    amount: -totalPrice,
+    description: `Покупка размещения баннера на главной на ${data.days} сут. — ${totalPrice} ₽`,
+    status: "completed",
+    createdAt: now,
+  };
+
+  await docClient.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        { Put: { TableName: TableName.HOMEPAGE_BANNERS, Item: banner } },
+        { Put: { TableName: TableName.TRANSACTIONS, Item: transaction } },
+      ],
+    })
+  );
+
+  return banner;
+}
+
 export async function updateHomepageBannerStatus(
   id: string,
   status: HomepageBanner["status"]
