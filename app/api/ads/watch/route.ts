@@ -7,6 +7,8 @@ import {
   createAdView,
   createTransaction,
   recordCampaignView,
+  computeAdUserReward,
+  computeAdvertiserCost,
 } from "@/lib/models";
 import { mockAds } from "@/lib/mock-data";
 
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (dbAvailable) {
-    const reward = Math.round(ad.duration * 0.00385 * 100) / 100;
+    const reward = computeAdUserReward(ad);
 
     await createAdView({
       userId,
@@ -81,11 +83,15 @@ export async function POST(request: NextRequest) {
     });
 
     if (ad.campaignId && ad.advertiserId) {
-      await recordCampaignView(ad.campaignId, ad.advertiserId, ad.reward);
+      await recordCampaignView(
+        ad.campaignId,
+        ad.advertiserId,
+        computeAdvertiserCost(ad)
+      );
     }
   }
 
-  const reward = Math.round(ad.duration * 0.00385 * 100) / 100;
+  const reward = computeAdUserReward(ad);
 
   return NextResponse.json({
     success: true,
