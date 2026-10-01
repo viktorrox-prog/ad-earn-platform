@@ -41,7 +41,10 @@ export interface VerificationCode {
 }
 
 export type TransactionType =
-  "earnings" | "withdrawal" | "referral" | "deposit";
+  | "earnings"
+  | "withdrawal"
+  | "referral"
+  | "deposit";
 export type TransactionStatus = "completed" | "pending" | "failed";
 
 export interface ReferralClick {
@@ -90,7 +93,13 @@ export interface AdView {
 }
 
 export type TaskPlatform =
-  "youtube" | "vk" | "telegram" | "cpc" | "app" | "survey" | "other";
+  | "youtube"
+  | "vk"
+  | "telegram"
+  | "cpc"
+  | "app"
+  | "survey"
+  | "other";
 export type TaskActionType =
   | "watch"
   | "like"
@@ -101,7 +110,11 @@ export type TaskActionType =
   | "survey"
   | "other";
 export type TaskType =
-  "social" | "subscription" | "cpc" | "app_install" | "survey";
+  | "social"
+  | "subscription"
+  | "cpc"
+  | "app_install"
+  | "survey";
 export type TaskStatus = "active" | "inactive";
 
 export interface Task {
@@ -159,7 +172,12 @@ export interface Advertiser {
 }
 
 export type CampaignType =
-  "video" | "banner" | "cpc" | "survey" | "app_install" | "subscription";
+  | "video"
+  | "banner"
+  | "cpc"
+  | "survey"
+  | "app_install"
+  | "subscription";
 export type CampaignStatus = "active" | "paused" | "completed";
 
 export const MIN_VIEWS_BY_CAMPAIGN_TYPE: Record<CampaignType, number> = {
@@ -475,16 +493,36 @@ export async function deleteVerificationCode(id: string): Promise<void> {
 export async function getTransactionsByUserId(
   userId: string
 ): Promise<Transaction[]> {
-  const result = await docClient.send(
-    new QueryCommand({
-      TableName: TableName.TRANSACTIONS,
-      IndexName: IndexName.TRANSACTIONS_USER_ID,
-      KeyConditionExpression: "#userId = :userId",
-      ExpressionAttributeNames: { "#userId": "userId" },
-      ExpressionAttributeValues: { ":userId": userId },
-    })
-  );
-  return (result.Items as Transaction[]) ?? [];
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TableName.TRANSACTIONS,
+        IndexName: IndexName.TRANSACTIONS_USER_ID,
+        KeyConditionExpression: "#userId = :userId",
+        ExpressionAttributeNames: { "#userId": "userId" },
+        ExpressionAttributeValues: { ":userId": userId },
+      })
+    );
+    return (result.Items as Transaction[]) ?? [];
+  } catch (err) {
+    // Часть DynamoDB-совместимых бэкендов (Yandex Cloud Document API) не
+    // позволяет обращаться к вторичным индексам: Query по GSI падает с ошибкой.
+    // Откатываемся на Scan с фильтром по userId, чтобы проверка баланса и история
+    // транзакций продолжали работать.
+    console.warn(
+      `Failed to query transactions by userId=${userId}, falling back to scan`,
+      err
+    );
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: TableName.TRANSACTIONS,
+        FilterExpression: "#userId = :userId",
+        ExpressionAttributeNames: { "#userId": "userId" },
+        ExpressionAttributeValues: { ":userId": userId },
+      })
+    );
+    return (result.Items as Transaction[]) ?? [];
+  }
 }
 
 export async function createTransaction(
@@ -505,6 +543,25 @@ export async function createTransaction(
   );
 
   return transaction;
+}
+
+/**
+ * Вознаграждение пользователя за просмотр рекламы.
+ *
+ * Пользователь получает 7% от цены рекламодателя за просмотр
+ * (цена рекламодателя = 0.055 ₽ × длительность в секундах), то есть
+ * reward = duration × 0.055 × 0.07 = duration × 0.00385.
+ *
+ * Эта же сумма показывается на карточке объявления в ленте /ads, чтобы
+ * заявленное вознаграждение всегда совпадало с реально начисляемым.
+ */
+export function computeAdUserReward(ad: Pick<Ad, "duration">): number {
+  return Math.round(ad.duration * 0.00385 * 100) / 100;
+}
+
+/** Цена рекламодателя за один просмотр = 0.055 ₽ × длительность (сек). */
+export function computeAdvertiserCost(ad: Pick<Ad, "duration">): number {
+  return Math.round(ad.duration * 0.055 * 100) / 100;
 }
 
 export async function getActiveAds(): Promise<Ad[]> {
@@ -663,28 +720,6 @@ export async function recordCampaignView(
   return { balance: advertiser?.balance ?? 0 };
 }
 
-/**
- * Учёт клика по ссылке рекламного объявления кампании.
- *
- * Атомарно увеличивает счётчик кликов (clicks) кампании. Вызывается, когда
- * пользователь реально переходит по целевой ссылке CPC-объявления из ленты
- * просмотра рекламы, чтобы рекламодатель видел число переходов по своим
- * ссылкам в карточке кампании и статистике.
- */
-export async function recordCampaignClick(campaignId: string): Promise<void> {
-  await docClient.send(
-    new UpdateCommand({
-      TableName: TableName.CAMPAIGNS,
-      Key: { id: campaignId },
-      UpdateExpression: "ADD clicks :inc SET updatedAt = :updatedAt",
-      ExpressionAttributeValues: {
-        ":inc": 1,
-        ":updatedAt": new Date().toISOString(),
-      },
-    })
-  );
-}
-
 export async function createAdView(data: Omit<AdView, "id">): Promise<AdView> {
   const { randomUUID } = await import("crypto");
   const view: AdView = {
@@ -766,8 +801,15 @@ export async function getActiveTasksByType(taskType: string): Promise<Task[]> {
 export async function getTasksByAdvertiser(
   advertiserId: string
 ): Promise<Task[]> {
-  const all = await getActiveTasks();
-  return all.filter((t) => t.advertiserId === advertiserId);
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: TableName.TASKS,
+      FilterExpression: "#advertiserId = :advertiserId",
+      ExpressionAttributeNames: { "#advertiserId": "advertiserId" },
+      ExpressionAttributeValues: { ":advertiserId": advertiserId },
+    })
+  );
+  return (result.Items as Task[]) ?? [];
 }
 
 export async function getTaskById(id: string): Promise<Task | null> {
@@ -884,35 +926,43 @@ export async function createStandaloneTaskWithBalanceDeduct(
  *
  * Инкрементирует счётчик выполнений задания и, если достигнут лимит
  * (`quantity`), деактивирует задание — оно перестаёт показываться пользователям.
+ *
+ * Счётчик увеличивается атомарной операцией `ADD`, чтобы при параллельных
+ * подтверждениях не терялись обновления (прежний вариант «прочитать → записать»
+ * мог затереть одновременные подтверждения и «не двигать» прогресс-бар).
  */
 export async function incrementTaskCompletions(taskId: string): Promise<void> {
-  const task = await getTaskById(taskId);
-  if (!task) return;
-
-  const next = (task.completions ?? 0) + 1;
-  const reachedLimit = task.quantity != null && next >= task.quantity;
-
   await docClient.send(
     new UpdateCommand({
       TableName: TableName.TASKS,
       Key: { id: taskId },
-      UpdateExpression: "SET completions = :next, updatedAt = :updatedAt",
-      ...(reachedLimit
-        ? {
-            UpdateExpression:
-              "SET completions = :next, #status = :inactive, updatedAt = :updatedAt",
-          }
-        : {}),
-      ExpressionAttributeNames: reachedLimit
-        ? { "#status": "status" }
-        : undefined,
+      UpdateExpression: "ADD completions :inc SET updatedAt = :updatedAt",
       ExpressionAttributeValues: {
-        ":next": next,
-        ":inactive": "inactive",
+        ":inc": 1,
         ":updatedAt": new Date().toISOString(),
       },
     })
   );
+
+  const task = await getTaskById(taskId);
+  if (
+    task?.quantity != null &&
+    task.completions != null &&
+    task.completions >= task.quantity
+  ) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: TableName.TASKS,
+        Key: { id: taskId },
+        UpdateExpression: "SET #status = :inactive, updatedAt = :updatedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":inactive": "inactive",
+          ":updatedAt": new Date().toISOString(),
+        },
+      })
+    );
+  }
 }
 
 export async function createTaskCompletion(
@@ -1284,6 +1334,30 @@ export async function incrementCampaignCompletions(
   );
 }
 
+/**
+ * Инкремент счётчика кликов кампании.
+ *
+ * Вызывается при каждом реальном переходе пользователя по целевой ссылке
+ * рекламного объявления (CPC и другие рекламные ссылки) в ленте /ads. Счётчик
+ * `clicks` отображается в кабинете рекламодателя (карточка кампании и общая
+ * статистика «Всего кликов»).
+ */
+export async function incrementCampaignClicks(
+  campaignId: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TableName.CAMPAIGNS,
+      Key: { id: campaignId },
+      UpdateExpression: "ADD clicks :inc SET updatedAt = :updatedAt",
+      ExpressionAttributeValues: {
+        ":inc": 1,
+        ":updatedAt": new Date().toISOString(),
+      },
+    })
+  );
+}
+
 export async function createCampaign(
   data: Omit<
     Campaign,
@@ -1322,16 +1396,35 @@ export async function createCampaign(
 export async function getWithdrawalRequestsByUserId(
   userId: string
 ): Promise<WithdrawalRequest[]> {
-  const result = await docClient.send(
-    new QueryCommand({
-      TableName: TableName.WITHDRAWAL_REQUESTS,
-      IndexName: IndexName.WITHDRAWAL_REQUESTS_USER_ID,
-      KeyConditionExpression: "#userId = :userId",
-      ExpressionAttributeNames: { "#userId": "userId" },
-      ExpressionAttributeValues: { ":userId": userId },
-    })
-  );
-  return (result.Items as WithdrawalRequest[]) ?? [];
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TableName.WITHDRAWAL_REQUESTS,
+        IndexName: IndexName.WITHDRAWAL_REQUESTS_USER_ID,
+        KeyConditionExpression: "#userId = :userId",
+        ExpressionAttributeNames: { "#userId": "userId" },
+        ExpressionAttributeValues: { ":userId": userId },
+      })
+    );
+    return (result.Items as WithdrawalRequest[]) ?? [];
+  } catch (err) {
+    // Fallback на Scan при недоступности GSI userId-index (см. комментарий в
+    // getTransactionsByUserId): список заявок пользователя должен загружаться
+    // даже на бэкендах, не поддерживающих обращение к вторичным индексам.
+    console.warn(
+      `Failed to query withdrawal requests by userId=${userId}, falling back to scan`,
+      err
+    );
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: TableName.WITHDRAWAL_REQUESTS,
+        FilterExpression: "#userId = :userId",
+        ExpressionAttributeNames: { "#userId": "userId" },
+        ExpressionAttributeValues: { ":userId": userId },
+      })
+    );
+    return (result.Items as WithdrawalRequest[]) ?? [];
+  }
 }
 
 export async function createWithdrawalRequest(
@@ -1356,17 +1449,22 @@ export async function createWithdrawalRequest(
 }
 
 /**
- * Атомарное создание заявки на вывод с одновременным резервированием средств.
+ * Создание заявки на вывод с одновременным резервированием средств.
  *
- * Заявка на вывод и транзакция списания (отрицательная, тип "withdrawal")
- * записываются одной транзакцией DynamoDB (TransactWriteItems), поэтому либо
- * создаются обе, либо не создаётся ни одна. Баланс пользователя вычисляется из
- * суммы транзакций, поэтому отрицательная транзакция сразу уменьшает доступный
- * баланс — средства «резервируются» на время модерации заявки.
+ * Заявка на вывод пишется в withdrawal_requests, следом — отрицательная
+ * транзакция списания (тип "withdrawal") в transactions. Баланс пользователя
+ * вычисляется из суммы транзакций, поэтому отрицательная транзакция сразу
+ * уменьшает доступный баланс — средства «резервируются» на время модерации
+ * заявки. Это предотвращает «перевывод»: последующие заявки видят уже
+ * уменьшенный баланс. При отклонении заявки админом зарезервированные средства
+ * возвращаются через refundWithdrawalFunds.
  *
- * Это предотвращает «перевывод»: последующие заявки видят уже уменьшенный
- * баланс. При отклонении заявки админом зарезервированные средства возвращаются
- * через refundWithdrawalFunds.
+ * Ранее запись выполнялась одной операцией TransactWriteItems. Часть
+ * DynamoDB-совместимых бэкендов (Yandex Cloud Document API) не поддерживает
+ * транзакционные операции, из-за чего вся запись падала: заявка не создавалась,
+ * а пользователь видел «ошибку создания заявки». Последовательные PutCommand
+ * работают на любом бэкенде; если запись резервирующей транзакции не удалась,
+ * созданная заявка откатывается, чтобы не оставалось заявки без списания.
  */
 export async function createWithdrawalRequestWithReservation(
   data: Omit<WithdrawalRequest, "id" | "createdAt" | "status">
@@ -1390,23 +1488,39 @@ export async function createWithdrawalRequestWithReservation(
   };
 
   await docClient.send(
-    new TransactWriteCommand({
-      TransactItems: [
-        {
-          Put: {
-            TableName: TableName.WITHDRAWAL_REQUESTS,
-            Item: request,
-          },
-        },
-        {
-          Put: {
-            TableName: TableName.TRANSACTIONS,
-            Item: reservation,
-          },
-        },
-      ],
+    new PutCommand({
+      TableName: TableName.WITHDRAWAL_REQUESTS,
+      Item: request,
     })
   );
+
+  try {
+    await docClient.send(
+      new PutCommand({
+        TableName: TableName.TRANSACTIONS,
+        Item: reservation,
+      })
+    );
+  } catch (err) {
+    console.error(
+      "Failed to write withdrawal reservation transaction, rolling back the request",
+      err
+    );
+    try {
+      await docClient.send(
+        new DeleteCommand({
+          TableName: TableName.WITHDRAWAL_REQUESTS,
+          Key: { id: request.id },
+        })
+      );
+    } catch (cleanupErr) {
+      console.error(
+        "Failed to roll back withdrawal request after reservation error",
+        cleanupErr
+      );
+    }
+    throw err;
+  }
 
   return request;
 }
@@ -2143,52 +2257,6 @@ export async function createHomepageBanner(
   return banner;
 }
 
-/**
- * Атомарная покупка рекламного баннера на главной странице.
- *
- * Запись баннера (homepage_banners, статус pending) и транзакция списания
- * стоимости (300 ₽ × количество суток, тип "withdrawal", отрицательная сумма)
- * создаются одной транзакцией DynamoDB (TransactWriteItems): либо создаются
- * обе, либо не создаётся ни одна. Это исключает ситуацию, когда баннер создан,
- * а средства не списаны (или наоборот).
- */
-export async function createHomepageBannerWithPayment(
-  data: Omit<HomepageBanner, "id" | "createdAt"> & { days: number }
-): Promise<HomepageBanner> {
-  const { randomUUID } = await import("crypto");
-  const now = new Date().toISOString();
-  const totalPrice = 300 * data.days;
-  const banner: HomepageBanner = {
-    id: randomUUID(),
-    userId: data.userId,
-    imageUrl: data.imageUrl,
-    targetUrl: data.targetUrl,
-    status: "pending",
-    createdAt: now,
-    expiresAt: data.expiresAt,
-  };
-  const transaction: Transaction = {
-    id: randomUUID(),
-    userId: data.userId,
-    type: "withdrawal",
-    amount: -totalPrice,
-    description: `Покупка размещения баннера на главной на ${data.days} сут. — ${totalPrice} ₽`,
-    status: "completed",
-    createdAt: now,
-  };
-
-  await docClient.send(
-    new TransactWriteCommand({
-      TransactItems: [
-        { Put: { TableName: TableName.HOMEPAGE_BANNERS, Item: banner } },
-        { Put: { TableName: TableName.TRANSACTIONS, Item: transaction } },
-      ],
-    })
-  );
-
-  return banner;
-}
-
 export async function updateHomepageBannerStatus(
   id: string,
   status: HomepageBanner["status"]
@@ -2204,6 +2272,15 @@ export async function updateHomepageBannerStatus(
     })
   );
   return (result.Attributes as HomepageBanner) ?? null;
+}
+
+export async function deleteHomepageBanner(id: string): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: TableName.HOMEPAGE_BANNERS,
+      Key: { id },
+    })
+  );
 }
 
 export async function updateAdminSettings(
