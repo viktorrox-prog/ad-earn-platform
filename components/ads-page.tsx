@@ -20,7 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Ad } from "@/lib/models";
+import { Ad, computeAdUserReward } from "@/lib/models";
 
 interface AdsResponse {
   ads: Ad[];
@@ -83,7 +83,7 @@ function AdCard({
         )}
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-green-400">
-            +{ad.reward.toFixed(2)} ₽
+            +{computeAdUserReward(ad).toFixed(2)} ₽
           </span>
           <Button size="sm" onClick={onWatch} disabled={disabled}>
             {ad.type === "cpc" ? (
@@ -107,57 +107,88 @@ function WatchModal({
 }: {
   ad: Ad;
   userId: string;
-  onComplete: () => void;
+  onComplete: () => Promise<boolean>;
   onClose: () => void;
 }) {
+  const hasTargetUrl = !!ad.targetUrl;
+  const isCpcWithLink = ad.type === "cpc" && hasTargetUrl;
   const [countdown, setCountdown] = useState(ad.duration);
   const [paused, setPaused] = useState(false);
-  // Для CPC-объявлений таймер запускается ТОЛЬКО после реального перехода
-  // по целевой ссылке. Для видео и баннера — сразу при открытии окна.
-  const [clicked, setClicked] = useState(ad.type !== "cpc");
-  const clickRecordedRef = useRef(false);
+  const [started, setStarted] = useState(!isCpcWithLink);
+  const [clicked, setClicked] = useState(false);
+  const clickTrackedRef = useRef(false);
+  const [rewarded, setRewarded] = useState(false);
   const completed = countdown <= 0;
   const rewardCalledRef = useRef(false);
 
-  useEffect(() => {
-    const handleVisibility = () => {
-      setPaused(document.visibilityState === "hidden");
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
-
-  useEffect(() => {
-    if (completed || paused || !clicked) return;
-    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [countdown, completed, paused, clicked]);
-
-  useEffect(() => {
-    if (completed && !rewardCalledRef.current) {
-      rewardCalledRef.current = true;
-      onComplete();
-    }
-  }, [completed, onComplete]);
-
-  const handleTransition = () => {
-    if (ad.targetUrl) {
-      window.open(ad.targetUrl, "_blank");
-    }
-    setClicked(true);
-    // Фиксируем клик по ссылке объявления для статистики рекламодателя.
-    if (!clickRecordedRef.current) {
-      clickRecordedRef.current = true;
+  const openTarget = useCallback(() => {
+    if (!ad.targetUrl) return;
+    if (!clickTrackedRef.current) {
+      clickTrackedRef.current = true;
       fetch("/api/ads/click", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, adId: ad.id }),
       }).catch(() => {});
     }
-  };
+    window.open(ad.targetUrl, "_blank");
+  }, [ad.id, ad.targetUrl, userId]);
 
-  const showCountdown = completed || paused || (ad.type !== "cpc" || clicked);
+  const handleGoToSite = useCallback(() => {
+    if (!ad.targetUrl) return;
+    setClicked(true);
+    if (isCpcWithLink) {
+      // Для CPC-объявлений таймер запускается сразу на переходе по ссылке
+      // и идёт одновременно с просмотром внешнего сайта — возвращаться на
+      // вкладку не требуется.
+      setStarted(true);
+    }
+    openTarget();
+  }, [ad.targetUrl, isCpcWithLink, openTarget]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (isCpcWithLink && clicked) {
+        // После перехода по ссылке CPC таймер не ставится на паузу:
+        // отсчёт идёт одновременно с просмотром внешнего сайта.
+        setPaused(false);
+        return;
+      }
+      setPaused(document.visibilityState === "hidden");
+    };
+    const handleFocus = () => {
+      setPaused(false);
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [isCpcWithLink, clicked]);
+
+  useEffect(() => {
+    if (!started || completed || paused) return;
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown, completed, paused, started]);
+
+  useEffect(() => {
+    if (completed && !rewardCalledRef.current) {
+      rewardCalledRef.current = true;
+      let closed = false;
+      Promise.resolve(onComplete()).then((credited) => {
+        setRewarded(credited);
+        // Если у объявления нет целевой ссылки — окно можно закрывать сразу
+        // после начисления. Если ссылка есть, оставляем окно открытым, чтобы
+        // пользователь мог перейти на сайт рекламодателя.
+        if (credited && !hasTargetUrl && !closed) {
+          closed = true;
+          onClose();
+        }
+      });
+    }
+  }, [completed, hasTargetUrl, onComplete, onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -182,14 +213,40 @@ function WatchModal({
         </div>
 
         <div className="aspect-video bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-          {completed ? (
+          {isCpcWithLink && !started ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
+                <ExternalLink className="h-8 w-8 text-primary" />
+              </div>
+              <span className="text-xs text-muted-foreground text-center px-6">
+                Нажмите «Перейти» — счётчик времени запустится сразу, таймер
+                идёт одновременно с просмотром сайта
+              </span>
+              <Button size="sm" variant="secondary" onClick={handleGoToSite}>
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                Перейти на сайт
+              </Button>
+            </div>
+          ) : completed ? (
             <div className="flex flex-col items-center gap-2 text-green-400">
               <CheckCircle2 className="h-12 w-12" />
               <span className="text-sm font-medium">Просмотр завершён</span>
-              <div className="flex items-center gap-2 mt-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-xs">Начисляем вознаграждение...</span>
-              </div>
+              {hasTargetUrl ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="mt-2"
+                  onClick={handleGoToSite}
+                >
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  Перейти на сайт рекламодателя
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 mt-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-xs">Начисляем вознаграждение...</span>
+                </div>
+              )}
             </div>
           ) : paused ? (
             <div className="flex flex-col items-center gap-3">
@@ -203,29 +260,6 @@ function WatchModal({
                 Таймер на паузе — вернитесь на вкладку
               </span>
             </div>
-          ) : ad.type === "cpc" && !clicked ? (
-            <div className="flex flex-col items-center gap-3 px-6 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/20">
-                <ExternalLink className="h-8 w-8 text-primary" />
-              </div>
-              <span className="text-sm font-medium">
-                Перейдите по ссылке, чтобы начать просмотр
-              </span>
-              {ad.targetUrl && (
-                <Button
-                  size="lg"
-                  onClick={handleTransition}
-                  className="gap-2 mt-1"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Перейти по ссылке
-                </Button>
-              )}
-              <span className="text-xs text-muted-foreground">
-                Ссылка откроется в новой вкладке. Таймер запустится сразу после
-                перехода.
-              </span>
-            </div>
           ) : (
             <div className="flex flex-col items-center gap-3">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
@@ -237,25 +271,20 @@ function WatchModal({
                 {ad.type === "video"
                   ? "Досмотрите ролик до конца"
                   : ad.type === "cpc"
-                    ? "Отличный переход! Ожидайте окончания таймера"
+                    ? "Отсчёт времени после перехода по ссылке"
                     : "Ознакомьтесь с баннером"}
               </span>
-              {ad.type === "cpc" && ad.targetUrl && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleTransition}
-                >
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                  Перейти на сайт ещё раз
-                </Button>
-              )}
             </div>
           )}
         </div>
 
         <div className="p-4 border-t border-border/50">
-          {completed ? (
+          {completed && rewarded ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-green-400">
+              <CheckCircle2 className="h-4 w-4" />
+              Вознаграждение начислено
+            </div>
+          ) : completed ? (
             <div className="flex items-center justify-center gap-2 text-sm text-green-400">
               <Loader2 className="h-4 w-4 animate-spin" />
               Начисление...
@@ -265,10 +294,10 @@ function WatchModal({
               <Clock className="h-4 w-4" />
               Пауза
             </div>
-          ) : ad.type === "cpc" && !clicked ? (
+          ) : isCpcWithLink && !started ? (
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <ExternalLink className="h-4 w-4" />
-              Нажмите «Перейти по ссылке»
+              Таймер запустится сразу после перехода по ссылке
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -315,29 +344,29 @@ export function AdsPage() {
       });
   }, [user, hydrated, router]);
 
-  const handleWatchComplete = useCallback(() => {
-    if (!user || !watchingAd) return;
+  const handleWatchComplete = useCallback(async (): Promise<boolean> => {
+    if (!user || !watchingAd) return false;
 
     const ad = watchingAd;
 
-    fetch("/api/ads/watch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id, adId: ad.id }),
-    })
-      .then(async (res) => {
-        const json = await res.json();
-        if (!res.ok) {
-          toast.error(json.error ?? "Ошибка начисления");
-          return;
-        }
-        toast.success(json.message);
-        setWatchedIds((prev) => new Set(prev).add(ad.id));
-        setWatchingAd(null);
-      })
-      .catch(() => {
-        toast.error("Ошибка сети");
+    try {
+      const res = await fetch("/api/ads/watch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, adId: ad.id }),
       });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? "Ошибка начисления");
+        return false;
+      }
+      toast.success(json.message);
+      setWatchedIds((prev) => new Set(prev).add(ad.id));
+      return true;
+    } catch {
+      toast.error("Ошибка сети");
+      return false;
+    }
   }, [user, watchingAd]);
 
   if (!user) return null;
@@ -481,7 +510,7 @@ export function AdsPage() {
         ) : null}
       </div>
 
-      {watchingAd && (
+      {watchingAd && user && (
         <WatchModal
           ad={watchingAd}
           userId={user.id}
