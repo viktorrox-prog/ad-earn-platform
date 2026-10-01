@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isDatabaseAvailable } from "@/lib/db";
-import { getActiveAds, getTodayAdViewsCount } from "@/lib/models";
+import {
+  getActiveAds,
+  getTodayAdViewsCount,
+  computeAdUserReward,
+} from "@/lib/models";
 import { mockAds } from "@/lib/mock-data";
 
 const querySchema = z.object({
@@ -34,8 +38,15 @@ export async function GET(request: NextRequest) {
   const DAILY_LIMIT = 50;
   const viewsRemaining = Math.max(0, DAILY_LIMIT - todayViews);
 
+  // В reward всегда отдаём фактически начисляемую пользователю сумму
+  // (7% от цены рекламодателя), а не цену, которую платит рекламодатель.
+  const normalizedAds = ads.map((ad) => ({
+    ...ad,
+    reward: computeAdUserReward(ad),
+  }));
+
   return NextResponse.json({
-    ads,
+    ads: normalizedAds,
     todayViews,
     viewsRemaining,
     dailyLimit: DAILY_LIMIT,
